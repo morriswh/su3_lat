@@ -66,35 +66,56 @@ int main(int argc, char *argv[]) {
     int fact_L = L/little_L;
     int fact_T = T/little_T;
 
-    int index;
     int tpos, bpos, ypos, tdir, bdir;
     int tmin = 0, tmax = 11;
     int bmin = 3, bmax = 3;
-    // int bwidth;
-    double trnum[2], trdenA[2], trdenB[2];
+    // double trnum[2], trdenA[2], trdenB[2];
     int src[4];
 
+    // make an info file
+    char info_path[200];
+    sprintf(info_path, "%s/info", data_dir);
+
+    struct stat buffer;
+    if (stat(info_path, &buffer) != 0) {
+        FILE *info_file;
+        info_file = fopen(info_path, "w");
+
+        fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\tdenA.imag\tdenB.real\tdenB.imag\n");
+        fprintf(info_file, "bmin=%d\n",bmin);
+        fprintf(info_file, "bmax=%d\n",bmax);
+        fprintf(info_file, "tmin=%d\n",tmin);
+        fprintf(info_file, "tmax=%d\n",tmax);
+        fprintf(info_file, "n=%d\n",n);
+        fprintf(info_file, "r=%lf\n",ratio);
+        fprintf(info_file, "index = b + ncols * t\n");
+
+        fclose(info_file);
+    }
+
+    // stuff for writing data to file
+    int file_index;
+    double *trace_array;
+    int data_length = 6*(bmax-bmin+1)*(tmax-tmin+1); // 3 complex observables -> 6 doubles
+    trace_array = (double*)calloc(data_length, sizeof(double));
 
     int s, t, b;
     for (s = 0; s < nSources; s++) {
-        index = 0;
+        file_index = 0;
 
         src[3] = fact_T*(s%little_T);
         src[2] = fact_L*((s/little_T)%little_L);
         src[1] = fact_L*(((s/little_T)/little_L)%little_L);
         src[0] = fact_L*((((s/little_T)/little_L)/little_L)%little_L);
 
-        char data_path[80];
-        sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.tsv", data_dir, argv[2], config_number, src[0], src[1], src[2], src[3]);
+        char data_path[200];
+        sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.bin", data_dir, argv[2], config_number, src[0], src[1], src[2], src[3]);
 
         // struct stat buffer;
-        // if (stat(data_path, &buffer) == 0) {
-        //     printf("%s already exists. Skipping.\n", data_path);
-        //     continue;
-        // }
-        FILE *data_file;
-        data_file = fopen(data_path, "w");
-        fprintf(data_file, "#index\tt\tb\tnum.real\tnum.imag\tdenA.real\tdenA.imag\tdenB.real\tdenB.imag\n");
+        if (stat(data_path, &buffer) == 0) {
+            printf("%s already exists. Skipping.\n", data_path);
+            continue;
+        }
 
         printf("On source: (%d, %d, %d, %d)\n", src[0], src[1], src[2], src[3]);
 
@@ -131,7 +152,8 @@ int main(int argc, char *argv[]) {
                 spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
                 tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, -ratio);
 
-                trace(trnum, &prop_num[srcp]);
+                // trace(trnum, &prop_num[srcp]);
+                trace(&trace_array[file_index], &prop_num[srcp]);
                 // printf("Trace: (%.12e) + i(%.12e)\n", trnum[0], trnum[1]);
 
                 // RH denominator
@@ -147,7 +169,8 @@ int main(int argc, char *argv[]) {
                 spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
                 tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, ratio);
 
-                trace(trdenA, &prop_den[srcp]);
+                // trace(trdenA, &prop_den[srcp]);
+                trace(&trace_array[file_index+2], &prop_den[srcp]);
                 // printf("Trace: (%.12e) + i(%.12e)\n", trdenA[0], trdenA[1]);
 
                 //LH denominator
@@ -168,16 +191,24 @@ int main(int argc, char *argv[]) {
                 spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
                 tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
 
-                trace(trdenB, &prop_den[srcp]);
+                // trace(trdenB, &prop_den[srcp]);
+                trace(&trace_array[file_index+4], &prop_den[srcp]);
                 // printf("Trace: (%.12e) + i(%.12e)\n", trdenB[0], trdenB[1]);
 
-                fprintf(data_file, "%d\t%d\t%d\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\n", 
-                        index++, t, b, trnum[0], trnum[1], trdenA[0], trdenA[1],
-                        trdenB[0], trdenB[1]);
+                // fprintf(data_file, "%d\t%d\t%d\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\n", 
+                //         index++, t, b, trnum[0], trnum[1], trdenA[0], trdenA[1],
+                //         trdenB[0], trdenB[1]);
+
+                // increase file_index by the number of columns
+                file_index += 6;
 
             }
         }
 
+        // write the file all at once so it doesn't just sit there open
+        FILE *data_file;
+        data_file = fopen(data_path, "wb");
+        fwrite(trace_array, sizeof(double), data_length, data_file);
         fclose(data_file);
 
     }
@@ -186,6 +217,7 @@ int main(int argc, char *argv[]) {
     // free(Om);
     free(prop_num);
     free(prop_den);
+    free(trace_array);
 
     clock_t end = clock();
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
