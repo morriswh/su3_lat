@@ -1,0 +1,404 @@
+#include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <inttypes.h>
+// #include <gmp.h>
+// #include <mpfr.h>
+#include <math.h>
+#include <time.h>
+#include "sizes.h"
+#include "su3lib.h"
+
+// #define LENGTH(X) (sizeof X / sizeof X[0])
+
+void rnd_config(double *U) {
+
+    // make a random gauge configuration
+    // double U[CLENGTH];
+    double temp[X];
+    int j = 0;
+    for (int i = 0; i < CLENGTH; i++) {
+        double rnd = 2*(double)rand()/(double)RAND_MAX - 1;
+        temp[j] = rnd;
+        j += 1;
+        if (j == X) {
+            j = 0;
+
+            // get real and imaginary parts of dot product
+            double dot_real = temp[0]*temp[6] + temp[1]*temp[7]
+                            + temp[2]*temp[8] + temp[3]*temp[9]
+                            + temp[4]*temp[10] + temp[5]*temp[11];
+            double dot_imag = temp[0]*temp[7] - temp[1]*temp[6]
+                            + temp[2]*temp[9] - temp[3]*temp[8]
+                            + temp[4]*temp[11] - temp[5]*temp[10];
+
+            // norm of u vector
+            double norm_u2 = temp[0]*temp[0] + temp[1]*temp[1]
+                           + temp[2]*temp[2] + temp[3]*temp[3]
+                           + temp[4]*temp[4] + temp[5]*temp[5];
+            double norm_u = sqrt(norm_u2);
+
+            // construct orthogonal vector for second row
+            temp[6] = temp[6] - (temp[0]*dot_real - temp[1]*dot_imag)/norm_u2; 
+            temp[7] = temp[7] - (temp[0]*dot_imag + temp[1]*dot_real)/norm_u2; 
+            temp[8] = temp[8] - (temp[2]*dot_real - temp[3]*dot_imag)/norm_u2; 
+            temp[9] = temp[9] - (temp[2]*dot_imag + temp[3]*dot_real)/norm_u2; 
+            temp[10] = temp[10] - (temp[4]*dot_real - temp[5]*dot_imag)/norm_u2; 
+            temp[11] = temp[11] - (temp[4]*dot_imag + temp[5]*dot_real)/norm_u2; 
+
+            // norm of v vector
+            double norm_v2 = temp[6]*temp[6] + temp[7]*temp[7]
+                           + temp[8]*temp[8] + temp[9]*temp[9]
+                           + temp[10]*temp[10] + temp[11]*temp[11];
+            double norm_v = sqrt(norm_v2);
+
+            U[i-11] = temp[0]/norm_u;
+            U[i-10] = temp[1]/norm_u;
+            U[i-9] = temp[2]/norm_u;
+            U[i-8] = temp[3]/norm_u;
+            U[i-7] = temp[4]/norm_u;
+            U[i-6] = temp[5]/norm_u;
+            U[i-5] = temp[6]/norm_v;
+            U[i-4] = temp[7]/norm_v;
+            U[i-3] = temp[8]/norm_v;
+            U[i-2] = temp[9]/norm_v;
+            U[i-1] = temp[10]/norm_v;
+            U[i] = temp[11]/norm_v;
+        }
+    }
+
+}
+
+void rnd_gauge_tr(double *Omega) {
+
+    // make a random gauge transformation matrix
+    // double Omega[OLENGTH];
+    double temp[X];
+    int j = 0;
+    for (int i = 0; i < OLENGTH; i++) {
+        double rnd = 2*(double)rand()/(double)RAND_MAX - 1;
+        temp[j] = rnd;
+        j += 1;
+        if (j == X) {
+            j = 0;
+
+            // get real and imaginary parts of dot product
+            double dot_real = temp[0]*temp[6] + temp[1]*temp[7]
+                            + temp[2]*temp[8] + temp[3]*temp[9]
+                            + temp[4]*temp[10] + temp[5]*temp[11];
+            double dot_imag = temp[0]*temp[7] - temp[1]*temp[6]
+                            + temp[2]*temp[9] - temp[3]*temp[8]
+                            + temp[4]*temp[11] - temp[5]*temp[10];
+
+            // norm of u vector
+            double norm_u2 = temp[0]*temp[0] + temp[1]*temp[1]
+                           + temp[2]*temp[2] + temp[3]*temp[3]
+                           + temp[4]*temp[4] + temp[5]*temp[5];
+            double norm_u = sqrt(norm_u2);
+
+            // construct orthogonal vector for second row
+            temp[6] = temp[6] - (temp[0]*dot_real - temp[1]*dot_imag)/norm_u2; 
+            temp[7] = temp[7] - (temp[0]*dot_imag + temp[1]*dot_real)/norm_u2; 
+            temp[8] = temp[8] - (temp[2]*dot_real - temp[3]*dot_imag)/norm_u2; 
+            temp[9] = temp[9] - (temp[2]*dot_imag + temp[3]*dot_real)/norm_u2; 
+            temp[10] = temp[10] - (temp[4]*dot_real - temp[5]*dot_imag)/norm_u2; 
+            temp[11] = temp[11] - (temp[4]*dot_imag + temp[5]*dot_real)/norm_u2; 
+
+            // norm of v vector
+            double norm_v2 = temp[6]*temp[6] + temp[7]*temp[7]
+                           + temp[8]*temp[8] + temp[9]*temp[9]
+                           + temp[10]*temp[10] + temp[11]*temp[11];
+            double norm_v = sqrt(norm_v2);
+
+            Omega[i-11] = temp[0]/norm_u;
+            Omega[i-10] = temp[1]/norm_u;
+            Omega[i-9] = temp[2]/norm_u;
+            Omega[i-8] = temp[3]/norm_u;
+            Omega[i-7] = temp[4]/norm_u;
+            Omega[i-6] = temp[5]/norm_u;
+            Omega[i-5] = temp[6]/norm_v;
+            Omega[i-4] = temp[7]/norm_v;
+            Omega[i-3] = temp[8]/norm_v;
+            Omega[i-2] = temp[9]/norm_v;
+            Omega[i-1] = temp[10]/norm_v;
+            Omega[i] = temp[11]/norm_v;
+        }
+    }
+
+}
+
+void get_index(int i) {
+    // int x = i%X;
+    // int mu = (i/X)%D;
+    // int l = ((i/X)/D)%L;
+    // int t = (((i/X)/D)/L)%T;
+    // printf("%d, %d, %d, %d\n", t, l, mu, x);
+    // int mu = i%D;
+    int x = i%L;
+    int y = (i/L)%L;
+    int z = (i/LSQUARE)%L;
+    int t = (i/LCUBE)%T;
+    // printf("%d, %d, %d, %d, %d\n", x, y, z, t, mu);
+    printf("%d, %d, %d, %d\n", x, y, z, t);
+}
+
+void get_link(double *link, double *U, int pos) {
+    pos = mod(pos, LLENGTH);
+    pos *= X;
+    for (int i = 0; i < X; i++) {
+        link[i] = U[pos+i];
+    }
+}
+
+void get_site(double *site, double *S, int spos) {
+    spos = mod(spos, LVOLUME);
+    spos *= X;
+    for (int i = 0; i < X; i++) {
+        site[i] = S[spos+i];
+    }
+}
+
+int ipow(int base, int exp)
+{
+    // borrowed this from a stackexchange post
+    int result = 1;
+    for (;;)
+    {
+        if (exp & 1)
+            result *= base;
+        exp >>= 1;
+        if (!exp)
+            break;
+        base *= base;
+    }
+
+    return result;
+}
+
+int mod(int value, int period) {
+    // avoid taking unnecessary operations
+    if (value >= 0 && value < period) {
+        return value;
+    }
+    else {
+        return (value%period + period)%period;
+    }
+    // return (value%period + period)%period;
+}
+
+void matmul(double *z, double *x, double *y) {
+    double u[X];
+    double v[X];
+    for (int i = 0; i < X; i++) {
+        u[i] = x[i];
+        v[i] = y[i];
+    }
+
+    z[0] = -u[1]*v[1] + u[0]*v[0] - u[3]*v[7] + u[2]*v[6]
+        + u[4]*v[5]*v[9] - u[5]*v[4]*v[9] - u[5]*v[5]*v[8] - u[4]*v[4]*v[8]
+        - u[4]*v[3]*v[11] + u[5]*v[2]*v[11] + u[5]*v[3]*v[10] + u[4]*v[2]*v[10];
+    z[1] = u[0]*v[1] + u[1]*v[0] + u[2]*v[7] + u[3]*v[6]
+        + u[5]*v[5]*v[9] + u[4]*v[4]*v[9] + u[4]*v[5]*v[8] - u[5]*v[4]*v[8]
+        - u[5]*v[3]*v[11] - u[4]*v[2]*v[11] - u[4]*v[3]*v[10] + u[5]*v[2]*v[10];
+    z[2] = -u[1]*v[3] + u[0]*v[2] - u[4]*v[5]*v[7] + u[5]*v[4]*v[7]
+        + u[5]*v[5]*v[6] + u[4]*v[4]*v[6] - u[3]*v[9] + u[2]*v[8]
+        + u[4]*v[1]*v[11] - u[5]*v[0]*v[11] - u[5]*v[1]*v[10] - u[4]*v[0]*v[10];
+    z[3] = u[0]*v[3] + u[1]*v[2] - u[5]*v[5]*v[7] - u[4]*v[4]*v[7]
+        - u[4]*v[5]*v[6] + u[5]*v[4]*v[6] + u[2]*v[9] + u[3]*v[8]
+        + u[5]*v[1]*v[11] + u[4]*v[0]*v[11] + u[4]*v[1]*v[10] - u[5]*v[0]*v[10];
+    z[4] = -u[1]*v[5] + u[0]*v[4] + u[4]*v[3]*v[7] - u[5]*v[2]*v[7]
+        - u[5]*v[3]*v[6] - u[4]*v[2]*v[6] - u[4]*v[1]*v[9] + u[5]*v[0]*v[9]
+        + u[5]*v[1]*v[8] + u[4]*v[0]*v[8] - u[3]*v[11] + u[2]*v[10];
+    z[5] = u[0]*v[5] + u[1]*v[4] + u[5]*v[3]*v[7] + u[4]*v[2]*v[7]
+        + u[4]*v[3]*v[6] - u[5]*v[2]*v[6] - u[5]*v[1]*v[9] - u[4]*v[0]*v[9]
+        - u[4]*v[1]*v[8] + u[5]*v[0]*v[8] + u[2]*v[11] + u[3]*v[10];
+    z[6] = -u[7]*v[1] + u[6]*v[0] - u[9]*v[7] + u[8]*v[6]
+        + u[10]*v[5]*v[9] - u[11]*v[4]*v[9] - u[11]*v[5]*v[8] - u[10]*v[4]*v[8]
+        - u[10]*v[3]*v[11] + u[11]*v[2]*v[11] + u[11]*v[3]*v[10] + u[10]*v[2]*v[10];
+    z[7] = u[6]*v[1] + u[7]*v[0] + u[8]*v[7] + u[9]*v[6]
+        + u[11]*v[5]*v[9] + u[10]*v[4]*v[9] + u[10]*v[5]*v[8] - u[11]*v[4]*v[8]
+        - u[11]*v[3]*v[11] - u[10]*v[2]*v[11] - u[10]*v[3]*v[10] + u[11]*v[2]*v[10];
+    z[8] = -u[7]*v[3] + u[6]*v[2] - u[10]*v[5]*v[7] + u[11]*v[4]*v[7]
+        + u[11]*v[5]*v[6] + u[10]*v[4]*v[6] - u[9]*v[9] + u[8]*v[8]
+        + u[10]*v[1]*v[11] - u[11]*v[0]*v[11] - u[11]*v[1]*v[10] - u[10]*v[0]*v[10];
+    z[9] = u[6]*v[3] + u[7]*v[2] - u[11]*v[5]*v[7] - u[10]*v[4]*v[7]
+        - u[10]*v[5]*v[6] + u[11]*v[4]*v[6] + u[8]*v[9] + u[9]*v[8]
+        + u[11]*v[1]*v[11] + u[10]*v[0]*v[11] + u[10]*v[1]*v[10] - u[11]*v[0]*v[10];
+    z[10] = -u[7]*v[5] + u[6]*v[4] + u[10]*v[3]*v[7] - u[11]*v[2]*v[7]
+        - u[11]*v[3]*v[6] - u[10]*v[2]*v[6] - u[10]*v[1]*v[9] + u[11]*v[0]*v[9]
+        + u[11]*v[1]*v[8] + u[10]*v[0]*v[8] - u[9]*v[11] + u[8]*v[10];
+    z[11] = u[6]*v[5] + u[7]*v[4] + u[11]*v[3]*v[7] + u[10]*v[2]*v[7]
+        + u[10]*v[3]*v[6] - u[11]*v[2]*v[6] - u[11]*v[1]*v[9] - u[10]*v[0]*v[9]
+        - u[10]*v[1]*v[8] + u[11]*v[0]*v[8] + u[8]*v[11] + u[9]*v[10];
+}
+
+void adjoint(double *xc, double *x) {
+    double y[X];
+    for (int i = 0; i < X; i++) {
+        y[i] = x[i];
+    }
+    xc[0] = y[0];
+    xc[1] = -y[1];
+    xc[2] = y[6];
+    xc[3] = -y[7];
+    xc[4] = y[5]*y[9] - y[4]*y[8] - y[3]*y[11] + y[2]*y[10];
+    xc[5] = -y[4]*y[9] - y[5]*y[8] + y[2]*y[11] + y[3]*y[10];
+    xc[6] = y[2];
+    xc[7] = -y[3];
+    xc[8] = y[8];
+    xc[9] = -y[9];
+    xc[10] = -y[5]*y[7] + y[4]*y[6] + y[1]*y[11] - y[0]*y[10];
+    xc[11] = y[4]*y[7] + y[5]*y[6] - y[0]*y[11] - y[1]*y[10];
+}
+
+void print_link(double *link) {
+    // printf("%lf+%lfi\t%lf+%lfi\n", link[0], link[3], 
+    //        link[2], link[1]);
+    // printf("-%lf+%lfi\t%lf-%lfi\n", link[2], link[1], 
+    //        link[0], link[3]);
+    // output as numpy array
+    // printf("Index: (%d, %d, %d)\n", index[0], index[1], index[2]);
+    // for now, just print the first two lines
+    printf("[(%lf)+1j*(%lf),(%lf)+1j*(%lf),(%lf)+1j*(%lf)]\n",
+           link[0], link[1], link[2], link[3],
+           link[4], link[5]);
+    printf("[(%lf)+1j*(%lf),(%lf)+1j*(%lf),(%lf)+1j*(%lf)]\n",
+           link[6], link[7],
+           link[8], link[9], link[10], link[11]);
+}
+
+void trace(double *result, double *matrix) {
+    result[0] = matrix[0] + matrix[8] + matrix[0]*matrix[8]
+        - matrix[1]*matrix[9] - matrix[2]*matrix[6] + matrix[3]*matrix[7];
+    result[1] = matrix[1] + matrix[9] - matrix[0]*matrix[9]
+        - matrix[1]*matrix[8] + matrix[2]*matrix[7] + matrix[3]*matrix[6];
+}
+
+void plaquette(double *plaq, double *U, int spos, int mu, int nu) {
+    // spos is in LVOLUME now
+    int offs_br, offs_tl;
+
+    if (mu == 0) {
+        offs_br = 1;
+    }
+    else if (mu == 1) {
+        offs_br = L;
+    }
+    else if (mu == 2) {
+        offs_br = LSQUARE;
+    }
+    else {
+        offs_br = LCUBE;
+    }
+
+    if (nu == 0) {
+        offs_tl = 1;
+    }
+    else if (nu == 1) {
+        offs_tl = L;
+    }
+    else if (nu == 2) {
+        offs_tl = LSQUARE;
+    }
+    else {
+        offs_tl = LCUBE;
+    }
+
+    int pos = D*spos + mu;
+    double temp[X];
+    get_link(plaq, U, mod(pos, LLENGTH));
+    // matmul(plaq,plaq,temp);
+
+    pos = D*(spos+offs_br) + nu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    matmul(plaq,plaq,temp);
+
+    pos = D*(spos+offs_tl) + mu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    adjoint(temp, temp);
+    matmul(plaq,plaq,temp);
+
+    pos = D*spos + nu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    adjoint(temp,temp);
+    matmul(plaq,plaq,temp);
+}
+
+void transform(double *Up, double *U, double *Om) {
+    int pos;
+    int opos;
+    int offs;
+    double link[X];
+    double omegaL[X];
+    double omegaR[X];
+    for (int i = 0; i < LLENGTH; i++) {
+        pos = X*i;
+        opos = X*(i/D);
+        offs = X*ipow(L,i%D); 
+        
+        // if (h == 0) {
+        //     offs = X;
+        // }
+        // else if (h == 1) {
+        //     offs = X*L;
+        // }
+        // else if (h ==2) {
+        //     offs = X*LSQUARE;
+        // }
+        // else {
+        //     offs = X*LCUBE;
+        // }
+
+        for (int j = 0; j < X; j++) {
+            link[j] = U[pos+j];
+            omegaL[j] = Om[opos+j];
+            omegaR[j] = Om[mod(opos+offs+j, OLENGTH)];
+        }
+        adjoint(omegaR,omegaR);
+
+        matmul(link,omegaL,link);
+        matmul(link,link,omegaR);
+
+        for (int k = 0; k < X; k++) {
+            Up[pos+k] = link[k];
+        }
+    }
+}
+
+void gauge_action(double *action, double *U) {
+    double plaq[X];
+    double sum = 0;
+    double tr[2];
+    int i = 0, j = 0, k = 0;
+    // I don't understand 'reduction' yet, but apparently it is needed
+    #pragma omp parallel for reduction(+:sum) private(tr, plaq, j, k)
+    for (i = 0; i < LVOLUME; i++) {
+        for (j = 0; j < D; j++) {
+            for (k = j+1; k < D; k++) {
+                plaquette(plaq, U, i, j, k);
+                trace(tr, plaq);
+                sum += tr[0];
+            }
+        }
+    }
+    *action = 2*beta*(3*T*L - sum);
+}
+
+void read_nersc(double *U) {
+    // need to figure out the issue with fread and doubles for the NERSC config
+    // for now the union method works I guess
+    union {
+        long int retriever[CLENGTH];
+        double U[CLENGTH];
+    } package; 
+    FILE *config = fopen("thyp2.1_gauge_nohead", "rb");
+    // const size_t ret_code = 
+    fread(package.retriever, sizeof(package.retriever[0]), CLENGTH, config);
+    for (int i = 0; i != CLENGTH; i++) {
+        package.retriever[i] = be64toh(package.retriever[i]);
+        U[i] = package.U[i];
+    }
+}
+
+
