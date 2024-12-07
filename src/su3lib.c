@@ -11,7 +11,7 @@
 #include "sizes.h"
 #include "su3lib.h"
 
-// #define LENGTH(X) (sizeof X / sizeof X[0])
+#define LENGTH(X) (sizeof X / sizeof X[0])
 
 void rnd_config(double *U) {
 
@@ -363,6 +363,78 @@ void plaquette(double *plaq, double *U, int spos, int mu, int nu) {
     matmul(plaq,plaq,temp);
 }
 
+void staples(double *staple, double *U, int spos, int mu, int nu) {
+    // spos is in LVOLUME now
+    int step_mu, step_nu, stride_mu, stride_nu;
+
+    if (mu == 0) {
+        step_mu = 1;
+        stride_mu = L;
+    }
+    else if (mu == 1) {
+        step_mu = L;
+        stride_mu = LSQUARE;
+    }
+    else if (mu == 2) {
+        step_mu = LSQUARE;
+        stride_mu = LCUBE;
+    }
+    else {
+        step_mu = LCUBE;
+        stride_mu = LVOLUME;
+    }
+
+    if (nu == 0) {
+        step_nu = 1;
+        stride_nu = L;
+    }
+    else if (nu == 1) {
+        step_nu = L;
+        stride_nu = LSQUARE;
+    }
+    else if (nu == 2) {
+        step_nu = LSQUARE;
+        stride_nu = LCUBE;
+    }
+    else {
+        step_nu = LCUBE;
+        stride_nu = LVOLUME;
+    }
+
+    double temp[X], staple_h[X];
+
+    // first staple
+    int pos = D*spos + nu;
+    get_link(staple, U, mod(pos, LLENGTH));
+
+    pos = D*(spos - mod(spos, stride_nu) + mod(spos + step_nu, stride_nu)) + mu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    matmul(staple, staple, temp);
+
+    pos = D*(spos - mod(spos, stride_mu) + mod(spos + step_mu, stride_mu)) + nu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    adjoint(temp, temp);
+    matmul(staple, staple, temp);
+
+    // second staple
+    pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
+    get_link(staple_h, U, mod(pos, LLENGTH));
+    adjoint(staple_h, staple_h);
+
+    pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + mu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    matmul(staple_h, staple_h, temp);
+    
+    pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu) - mod(spos, stride_mu) + mod(spos + step_mu, stride_mu)) + nu;
+    get_link(temp, U, mod(pos, LLENGTH));
+    matmul(staple_h, staple_h, temp);
+
+    for (int i = 0; i < X; i++) {
+        staple[i] += staple_h[i];
+    }
+
+}
+
 void transform(double *Up, double *U, double *Om) {
     int pos, opos, fopos;
     int offs, period, h;
@@ -428,20 +500,26 @@ void gauge_action(double *action, double *U) {
     *action = 2*beta*(3*T*L - sum);
 }
 
-void read_nersc(double *U, char *config) {
+void read_nersc(double *U, char *config, char *header, int *header_length) {
     // need to figure out the issue with fread and doubles for the NERSC config
     // for now the union method works I guess
     union {
         long int retriever;
         double element;
     } package; 
+
     FILE *config_file = fopen(config, "rb");
-    // read header, should makethis more general maybe 
-    char header[50];
-    for (int i = 0; i < 22; i++) {
-        fgets(header, 50, config_file);
-        printf("%s", header);
+    int safety = 2000;
+    char check_end[] = "END_HEADER\n";
+    *header_length = 0;
+    for (int i = 0; i < safety; i++) {
+        header[i] = fgetc(config_file);
+        *header_length += 1;
+        if (strncmp(check_end, &header[i-10], sizeof(check_end)) == 0) {
+            break;
+        }
     }
+
     // read in configuration data
     for (int i = 0; i != CLENGTH; i++) {
         fread(&package.retriever, sizeof(package.retriever), 1, config_file);
@@ -451,19 +529,29 @@ void read_nersc(double *U, char *config) {
     fclose(config_file);
 }
 
+void write_nersc(double *U, char *out_file, char *header, int header_length) {
+    union {
+        long int sender;
+        double element;
+    } package; 
 
-// void read_nersc(double *U) {
-//     // need to figure out the issue with fread and doubles for the NERSC config
-//     // for now the union method works I guess
-//     union {
-//         long int retriever[CLENGTH];
-//         double U[CLENGTH];
-//     } package; 
-//     FILE *config = fopen("thyp2.1_gauge_nohead", "rb");
-//     // const size_t ret_code = 
-//     fread(package.retriever, sizeof(package.retriever[0]), CLENGTH, config);
-//     for (int i = 0; i != CLENGTH; i++) {
-//         package.retriever[i] = be64toh(package.retriever[i]);
-//         U[i] = package.U[i];
-//     }
-// }
+    FILE *config_file = fopen(out_file, "wb");
+    fwrite(header, sizeof(char), header_length, config_file);
+    // fwrite(U, sizeof(double), CLENGTH, config_file);
+    for (int i = 0; i != CLENGTH; i++) {
+        package.element = U[i];
+        package.sender = htobe64(package.sender);
+        fwrite(&package.sender, sizeof(package.sender), 1, config_file);
+    }
+    fclose(config_file);
+}
+
+
+
+
+
+
+
+
+
+

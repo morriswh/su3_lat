@@ -14,7 +14,7 @@
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
-void ape_smear_yz(double *V, double *U, int steps, double alpha) {
+void ape_smear_yz(double *V, double *U, double alpha) {
 
     // make coefficients
     double one_minus_alpha_matrix[X], alpha_matrix_div_six[X];
@@ -24,34 +24,40 @@ void ape_smear_yz(double *V, double *U, int steps, double alpha) {
     one_minus_alpha_matrix[8] = 1 - alpha;
     one_minus_alpha_matrix[16] = 1 - alpha;
 
-    memset(alpha_matrix, 0, sizeof(alpha_matrix));
+    memset(alpha_matrix_div_six, 0, sizeof(alpha_matrix_div_six));
     alpha_matrix_div_six[0] = alpha/6.0;
     alpha_matrix_div_six[8] = alpha/6.0;
     alpha_matrix_div_six[16] = alpha/6.0;
 
-    double base[X], staple_sum[X];
+    double base[X], staple_sum[X], staple[X];
     memset(staple_sum, 0, sizeof(staple_sum));
 
     // int mu = mu_y;
     int i, mu, nu, j;
+    #pragma omp parallel for private(mu, nu, j, base, staple_sum, staple)
     for (i = 0; i < LVOLUME; i++) {
-        for (mu = mu_y; mu <= mu_z; mu++) {
-            memcpy(base, &U[X*(D*i + mu)]);
-            for (nu = 0; nu < D; nu++) {
-                if (nu == mu) {
-                    continue;
+        for (mu = 0; mu < D; mu++) {
+            if (mu == mu_y || mu == mu_z) {
+                memcpy(base, &U[X*(D*i + mu)], sizeof(double)*X);
+                for (nu = 0; nu < D; nu++) {
+                    if (nu == mu) {
+                        continue;
+                    }
+                    staples(staple, U, i, mu, nu);
+                    for (j = 0; j < X; j++) {
+                        staple_sum[j] += staple[j];
+                    }
                 }
-                staples(staple, U, i, mu, nu);
+                matmul(base, one_minus_alpha_matrix, base);
+                matmul(staple_sum, alpha_matrix_div_six, staple_sum);
                 for (j = 0; j < X; j++) {
-                    staple_sum[j] += staple[j];
+                    base[j] += staple_sum[j];
                 }
+                memcpy(&V[X*(D*i + mu)], base, sizeof(double)*X);
             }
-            matmul(base, one_minus_alpha_matrix, base);
-            matmul(staple_sum, alpha_matrix_div_six, staple_sum);
-            for (j = 0; j < X; j++) {
-                base[j] += staple_sum[j];
+            else {
+                memcpy(&V[X*(D*i + mu)], &U[X*(D*i + mu)], sizeof(double)*X);
             }
-            memcpy(&V[X*(D*i + mu)], base);
         }
     }
     gram_schmidt(V);
@@ -63,9 +69,9 @@ void gram_schmidt(double *U) {
     double dot_real, dot_imag;
     double norm_u2, norm_u;
     double norm_v2, norm_v;
-    int i, j, p;
+    int i, p;
     for (i = 0; i < LLENGTH; i++) {
-        memcpy(temp,&U[X*i],sizeof(double)*X)
+        memcpy(temp,&U[X*i],sizeof(double)*X);
         // for (j = 0; j < X; j++) {
         //     temp[j] = U[];
         // }
@@ -124,33 +130,5 @@ void gram_schmidt(double *U) {
                   + (U[p+2]*U[p+7] + U[p+3]*U[p+6]); // im(u1.v2-u2.v1)
     }
 
-}
-
-int ipow(int base, int exp)
-{
-    // borrowed this from a stackexchange post
-    int result = 1;
-    for (;;)
-    {
-        if (exp & 1)
-            result *= base;
-        exp >>= 1;
-        if (!exp)
-            break;
-        base *= base;
-    }
-
-    return result;
-}
-
-int mod(int value, int period) {
-    // avoid taking unnecessary operations
-    if (value >= 0 && value < period) {
-        return value;
-    }
-    else {
-        return (value%period + period)%period;
-    }
-    // return (value%period + period)%period;
 }
 

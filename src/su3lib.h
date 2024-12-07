@@ -13,10 +13,11 @@ void print_link(double *link); // print gauge link, needs cosmetic attention
 void trace(double *result, double *matrix); // trace of su(3) matrix
 void transform(double *Up, double *U, double *Omega); // gauge transformation
 void plaquette(double *plaq, double *U, int spos, int mu, int nu); // plaquette
+void staples(double *staple, double *U, int spos, int mu, int nu); // staple
 void gauge_action(double *action, double *U);
 void rnd_config(double *U);
 void rnd_gauge_tr(double *Omega);
-// void read_nersc(double *U, FILE *config);
-void read_nersc(double *U, char *config);
+void read_nersc(double *U, char *config, char *header, int *header_length);
+void write_nersc(double *U, char *out_file, char *header, int header_length);
 
 #endif // !SU3LIB_H
