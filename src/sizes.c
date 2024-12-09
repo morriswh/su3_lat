@@ -1,6 +1,7 @@
 #include "sizes.h"
 
 const double beta = 0.3; // 1/g^2
+const double PI = 3.141592653589793;
 const int T = 64; // lattice temporal size
 const int L = 32; // lattice spacial size
 const int D = 4; // spacetime dimensions

@@ -2,6 +2,7 @@
 #define SIZES_H
 
 extern const double beta;
+extern const double PI;
 extern const int T; // lattice temporal size
 extern const int L; // lattice spacial size
 extern const int D; // spacetime dimensions

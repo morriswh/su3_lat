@@ -13,6 +13,8 @@ void print_link(double *link); // print gauge link, needs cosmetic attention
 void trace(double *result, double *matrix); // trace of su(3) matrix
 void transform(double *Up, double *U, double *Omega); // gauge transformation
 void plaquette(double *plaq, double *U, int spos, int mu, int nu); // plaquette
+void cloverleaf(double *clover, double *U, int spos, int mu, int nu); // clover
+void top_charge(double *tcharge, double *U);
 void staples(double *staple, double *U, int spos, int mu, int nu); // staple
 void gauge_action(double *action, double *U);
 void rnd_config(double *U);

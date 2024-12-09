@@ -13,6 +13,8 @@
 
 #define LENGTH(X) (sizeof X / sizeof X[0])
 
+enum dim{mu_x, mu_y, mu_z, mu_t};
+
 void rnd_config(double *U) {
 
     // make a random gauge configuration
@@ -361,6 +363,356 @@ void plaquette(double *plaq, double *U, int spos, int mu, int nu) {
     get_link(temp, U, mod(pos, LLENGTH));
     adjoint(temp,temp);
     matmul(plaq,plaq,temp);
+}
+
+void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
+
+    memset(clover, 0, X*sizeof(double));
+
+    double temp[X], leaf[X];
+    // double clover_l1[X], clover_l2[X], clover_l3[X], clover_l4[X];
+    int pos, i;
+    int step_mu, step_nu, stride_mu, stride_nu;
+
+    if (mu == 0) {
+        step_mu = 1;
+        stride_mu = L;
+    }
+    else if (mu == 1) {
+        step_mu = L;
+        stride_mu = LSQUARE;
+    }
+    else if (mu == 2) {
+        step_mu = LSQUARE;
+        stride_mu = LCUBE;
+    }
+    else {
+        step_mu = LCUBE;
+        stride_mu = LVOLUME;
+    }
+
+    if (nu == 0) {
+        step_nu = 1;
+        stride_nu = L;
+    }
+    else if (nu == 1) {
+        step_nu = L;
+        stride_nu = LSQUARE;
+    }
+    else if (nu == 2) {
+        step_nu = LSQUARE;
+        stride_nu = LCUBE;
+    }
+    else {
+        step_nu = LCUBE;
+        stride_nu = LVOLUME;
+    }
+
+    #pragma omp parallel private(temp, pos, leaf, i)
+    #pragma omp single
+    {
+        #pragma omp task
+        {
+            // Top right leaf
+
+            pos = D*spos + mu;
+            get_link(leaf, U, mod(pos, LLENGTH));
+
+            pos = D*(spos - mod(spos, stride_mu) + mod(spos + step_mu, stride_mu)) + nu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            matmul(leaf, leaf, temp);
+
+            pos = D*(spos - mod(spos, stride_nu) + mod(spos + step_nu, stride_nu)) + mu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            adjoint(temp, temp);
+            matmul(leaf, leaf, temp);
+
+            pos = D*spos + nu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            adjoint(temp, temp);
+            matmul(leaf, leaf, temp);
+
+            for (i = 0; i < X; i++) {
+                clover[i] += leaf[i];
+            }
+        }
+
+        #pragma omp task
+        {
+            // Top left leaf
+
+            pos = D*spos + nu;
+            get_link(leaf, U, mod(pos, LLENGTH));
+
+            pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+                + mod(spos - step_mu, stride_mu) + mod(spos + step_nu, stride_nu)) + mu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            adjoint(temp, temp);
+            matmul(leaf, leaf, temp);
+
+            pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + nu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            adjoint(temp, temp);
+            matmul(leaf, leaf, temp);
+
+            pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + mu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            matmul(leaf, leaf, temp);
+
+            for (i = 0; i < X; i++) {
+                clover[i] += leaf[i];
+            }
+        }
+
+        #pragma omp task
+        {
+            // Bottom left leaf
+
+            pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + mu;
+            get_link(leaf, U, mod(pos, LLENGTH));
+            adjoint(leaf, leaf);
+
+            pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+                + mod(spos - step_mu, stride_mu) + mod(spos - step_nu, stride_nu)) + nu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            adjoint(temp, temp);
+            matmul(leaf, leaf, temp);
+
+            pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+                + mod(spos - step_mu, stride_mu) + mod(spos - step_nu, stride_nu)) + mu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            matmul(leaf, leaf, temp);
+
+            pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            matmul(leaf, leaf, temp);
+
+            for (i = 0; i < X; i++) {
+                clover[i] += leaf[i];
+            }
+        }
+
+        #pragma omp task
+        {
+            // Bottom right leaf
+
+            pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
+            get_link(leaf, U, mod(pos, LLENGTH));
+            adjoint(leaf, leaf);
+
+            pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + mu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            matmul(leaf, leaf, temp);
+
+            pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+                + mod(spos + step_mu, stride_mu) + mod(spos - step_nu, stride_nu)) + nu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            matmul(leaf, leaf, temp);
+
+            pos = D*spos + mu;
+            get_link(temp, U, mod(pos, LLENGTH));
+            adjoint(temp, temp);
+            matmul(leaf, leaf, temp);
+
+            for (i = 0; i < X; i++) {
+                clover[i] += leaf[i];
+            }
+        }
+    } // end of single
+    adjoint(temp, clover);
+    for (i = 0; i < X; i++) {
+        clover[i] -= temp[i];
+        clover[i] *= 1.0/8.0;
+    }
+    // print_link(clover);
+}
+
+// void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
+//
+//     memset(clover, 0, X*sizeof(double));
+//
+//     double temp[X], leaf[X];
+//     // double clover_l1[X], clover_l2[X], clover_l3[X], clover_l4[X];
+//     int pos, i;
+//     int step_mu, step_nu, stride_mu, stride_nu;
+//
+//     if (mu == 0) {
+//         step_mu = 1;
+//         stride_mu = L;
+//     }
+//     else if (mu == 1) {
+//         step_mu = L;
+//         stride_mu = LSQUARE;
+//     }
+//     else if (mu == 2) {
+//         step_mu = LSQUARE;
+//         stride_mu = LCUBE;
+//     }
+//     else {
+//         step_mu = LCUBE;
+//         stride_mu = LVOLUME;
+//     }
+//
+//     if (nu == 0) {
+//         step_nu = 1;
+//         stride_nu = L;
+//     }
+//     else if (nu == 1) {
+//         step_nu = L;
+//         stride_nu = LSQUARE;
+//     }
+//     else if (nu == 2) {
+//         step_nu = LSQUARE;
+//         stride_nu = LCUBE;
+//     }
+//     else {
+//         step_nu = LCUBE;
+//         stride_nu = LVOLUME;
+//     }
+//
+//             // Top right leaf
+//
+//             pos = D*spos + mu;
+//             get_link(leaf, U, mod(pos, LLENGTH));
+//
+//             pos = D*(spos - mod(spos, stride_mu) + mod(spos + step_mu, stride_mu)) + nu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*(spos - mod(spos, stride_nu) + mod(spos + step_nu, stride_nu)) + mu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             adjoint(temp, temp);
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*spos + nu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             adjoint(temp, temp);
+//             matmul(leaf, leaf, temp);
+//
+//             for (i = 0; i < X; i++) {
+//                 clover[i] += leaf[i];
+//             }
+//
+//             // Top left leaf
+//
+//             pos = D*spos + nu;
+//             get_link(leaf, U, mod(pos, LLENGTH));
+//
+//             pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+//                 + mod(spos - step_mu, stride_mu) + mod(spos + step_nu, stride_nu)) + mu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             adjoint(temp, temp);
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + nu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             adjoint(temp, temp);
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + mu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             matmul(leaf, leaf, temp);
+//
+//             for (i = 0; i < X; i++) {
+//                 clover[i] += leaf[i];
+//             }
+//
+//             // Bottom left leaf
+//
+//             pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + mu;
+//             get_link(leaf, U, mod(pos, LLENGTH));
+//             adjoint(leaf, leaf);
+//
+//             pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+//                 + mod(spos - step_mu, stride_mu) + mod(spos - step_nu, stride_nu)) + nu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             adjoint(temp, temp);
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+//                 + mod(spos - step_mu, stride_mu) + mod(spos - step_nu, stride_nu)) + mu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             matmul(leaf, leaf, temp);
+//
+//             for (i = 0; i < X; i++) {
+//                 clover[i] += leaf[i];
+//             }
+//
+//             // Bottom right leaf
+//
+//             pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
+//             get_link(leaf, U, mod(pos, LLENGTH));
+//             adjoint(leaf, leaf);
+//
+//             pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + mu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*(spos - mod(spos, stride_mu) - mod(spos, stride_nu)
+//                 + mod(spos + step_mu, stride_mu) + mod(spos - step_nu, stride_nu)) + nu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             matmul(leaf, leaf, temp);
+//
+//             pos = D*spos + mu;
+//             get_link(temp, U, mod(pos, LLENGTH));
+//             adjoint(temp, temp);
+//             matmul(leaf, leaf, temp);
+//
+//             for (i = 0; i < X; i++) {
+//                 clover[i] += leaf[i];
+//             }
+//
+//     adjoint(temp, clover);
+//     for (i = 0; i < X; i++) {
+//         clover[i] -= temp[i];
+//         clover[i] *= 1.0/8.0;
+//     }
+//     // print_link(clover);
+// }
+
+void top_charge(double *topo_charge, double *U) {
+
+    double tcharge[2] = {0};
+    // memcpy(tcharge, topo_charge, 2*sizeof(double));
+    // memset(tcharge, 0, 2*sizeof(double));
+
+    int spos, i;
+    double C1[X], C2[X], C3[X], C4[X], C5[X], C6[X];
+    double O1[X], O2[X], O3[X], O4[X], O5[X], O6[X];
+    double PT[X];
+    double AT[2];
+
+    #pragma omp parallel for private(i, C1, C2, C3, C4, C5, C6, O1, O2, O3, O4, O5, O6, PT, AT) reduction(+: tcharge)
+    for (spos = 0; spos < LVOLUME; spos++) {
+
+        cloverleaf(C1, U, spos, 0, 1);
+        cloverleaf(C2, U, spos, 0, 2);
+        cloverleaf(C3, U, spos, 0, 3);
+        cloverleaf(C4, U, spos, 2, 1);
+        cloverleaf(C5, U, spos, 1, 3);
+        cloverleaf(C6, U, spos, 3, 2);
+
+        matmul(O1, C1, C6);
+        matmul(O2, C2, C5);
+        matmul(O3, C3, C4);
+        matmul(O4, C4, C3);
+        matmul(O5, C5, C2);
+        matmul(O6, C6, C1);
+
+        for (i = 0; i < X; i++) {
+            PT[i] = O1[i] + O2[i] + O3[i] + O4[i] + O5[i] + O6[i];
+        }
+
+        trace(AT, PT);
+        tcharge[0] += AT[0];
+        tcharge[1] += AT[1];
+    }
+    topo_charge[0] = tcharge[0]/(8.0*pow(PI, 2));
+    topo_charge[1] = tcharge[1]/(8.0*pow(PI, 2));
 }
 
 void staples(double *staple, double *U, int spos, int mu, int nu) {
