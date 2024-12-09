@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 
     int header_length = 0;
     double alpha = 0.3;
-    int smearing_steps = 3;
+    int smearing_steps = 20;
 
     int path_length;
     char *in_file, *out_file;
@@ -74,20 +74,23 @@ int main(int argc, char *argv[]) {
     char *header;
     header = (char*)malloc(600*sizeof(char));
 
+    read_nersc(U, in_file, header, &header_length);
     int j;
     for (j = i; j < smearing_steps+1; j++) {
-        read_nersc(U, in_file, header, &header_length);
         ape_smear_yz(V, U, alpha);
-        write_nersc(V, out_file, header, header_length);
+        if ( j%4 == 3 && j > 0) {
+            free(out_file);
+            path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
+            out_file = (char*)malloc(path_length+1);
+            sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
+            write_nersc(V, out_file, header, header_length);
+        }
 
-        free(in_file);
-        in_file = (char*)malloc(path_length+1);
-        memcpy(in_file, out_file, sizeof(char)*(path_length+1));
+        // free(in_file);
+        // in_file = (char*)malloc(path_length+1);
+        // memcpy(in_file, out_file, sizeof(char)*(path_length+1));
 
-        path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
-        free(out_file);
-        out_file = (char*)malloc(path_length+1);
-        sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
+        memcpy(U, V, sizeof(double)*CLENGTH);
     }
 
     free(U);
