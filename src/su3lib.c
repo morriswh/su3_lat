@@ -867,8 +867,10 @@ void read_nersc(double *U, char *config, char *header, int *header_length) {
     for (int i = 0; i < safety; i++) {
         header[i] = fgetc(config_file);
         *header_length += 1;
-        if (strncmp(check_end, &header[i-10], sizeof(check_end)) == 0) {
-            break;
+        if ( i > 10) {
+            if (strncmp(check_end, &header[i-10], sizeof(check_end)) == 0) {
+                break;
+            }
         }
     }
 

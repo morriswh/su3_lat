@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 
     int header_length = 0;
     double alpha = 0.3;
-    int smearing_steps = 500;
+    int smearing_steps = 1;
 
     int path_length;
     char *in_file, *out_file;
@@ -76,9 +76,11 @@ int main(int argc, char *argv[]) {
     double *U, *V;
     U = (double*)calloc(CLENGTH, sizeof(double));
     V = (double*)calloc(CLENGTH, sizeof(double));
+    memset(U, 0, CLENGTH*sizeof(double));
 
     char *header;
     header = (char*)malloc(600*sizeof(char));
+    memset(header, 0, 600*sizeof(char));
 
 
     read_nersc(U, in_file, header, &header_length);
@@ -115,6 +117,7 @@ int main(int argc, char *argv[]) {
     free(V);
     free(header);
     free(in_file);
+    free(out_file);
 
     
     clock_gettime(CLOCK_MONOTONIC, &now);
