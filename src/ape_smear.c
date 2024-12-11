@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 
     int header_length = 0;
     double alpha = 0.3;
-    int smearing_steps = 1;
+    int smearing_steps = 500;
 
     int path_length;
     char *in_file, *out_file;
@@ -48,27 +48,27 @@ int main(int argc, char *argv[]) {
     in_file = (char*)malloc(path_length+1);
     sprintf(in_file, config);
 
-    // // for out_file
-    // path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
-    // out_file = (char*)malloc(path_length+1);
-    // sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
+    // for out_file
+    path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
+    out_file = (char*)malloc(path_length+1);
+    sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
 
     struct stat buffer;
     // while (stat(out_file, &buffer) == 0 && i < smearing_steps) {
     for (i = 0; i < smearing_steps; i++) {
 
         path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
-        out_file = (char*)malloc(path_length+1);
+        out_file = (char*)realloc(out_file, path_length+1);
         sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
 
         if ( stat(out_file, &buffer) == 0 ) { // if exists
             k++;
-            free(in_file);
-            in_file = (char*)malloc(path_length+1);
+            // free(in_file);
+            in_file = (char*)realloc(in_file, path_length+1);
             // sprintf(in_file, "%s", out_file);
             memcpy(in_file, out_file, sizeof(char)*(path_length+1));
 
-            free(out_file);
+            // free(out_file);
         }
 
     }
@@ -87,12 +87,12 @@ int main(int argc, char *argv[]) {
 
     // double top_charge_array[smearing_steps];
     double top_charge_complex[2];
-    top_charge(top_charge_complex, U);
+    // top_charge(top_charge_complex, U);
     // top_charge_array[j] = top_charge_complex[0];
     clock_gettime(CLOCK_MONOTONIC, &now);
     elapsed = (now.tv_sec - start.tv_sec);
     elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
-    printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
+    // printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
 
     int j;
     for (j = k; j < smearing_steps; j++) {
@@ -105,10 +105,10 @@ int main(int argc, char *argv[]) {
         printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
         if ( j%50 == 49 ) {
             path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
-            out_file = (char*)malloc(path_length+1);
+            out_file = (char*)realloc(out_file, path_length+1);
             sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
             write_nersc(V, out_file, header, header_length);
-            free(out_file);
+            // free(out_file);
         }
         memcpy(U, V, sizeof(double)*CLENGTH);
     }
@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
     free(out_file);
 
     
-    clock_gettime(CLOCK_MONOTONIC, &now);
+    clock_gettime(CLOCK_MONOTONIC, &finish);
     
     elapsed = (finish.tv_sec - start.tv_sec);
     elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
