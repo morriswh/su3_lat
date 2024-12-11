@@ -1,4 +1,4 @@
-file=main
+file=ape_smear
 
 all: build
 
@@ -10,6 +10,4 @@ build:
 	gcc -c apelib.c -o apelib.o -Wall -Wextra -lm --openmp
 	ar rcs libapelib.a apelib.o
 	gcc $(file).c -I. -L. -lapelib -lsu3lib -lsizes -o $(file) -lm --openmp
-	# gcc main.c -I. -L. -lapelib -lsu3lib -lsizes -o main -lm --openmp
-	# gcc testing.c -I. -L. -lsu3lib -lsizes -o testing -lm --openmp
 

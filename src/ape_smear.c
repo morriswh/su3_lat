@@ -63,12 +63,8 @@ int main(int argc, char *argv[]) {
 
         if ( stat(out_file, &buffer) == 0 ) { // if exists
             k++;
-            // free(in_file);
             in_file = (char*)realloc(in_file, path_length+1);
-            // sprintf(in_file, "%s", out_file);
             memcpy(in_file, out_file, sizeof(char)*(path_length+1));
-
-            // free(out_file);
         }
 
     }
@@ -82,22 +78,23 @@ int main(int argc, char *argv[]) {
     header = (char*)malloc(600*sizeof(char));
     memset(header, 0, 600*sizeof(char));
 
-
     read_nersc(U, in_file, header, &header_length);
 
-    // double top_charge_array[smearing_steps];
+    double top_charge_array[smearing_steps+1];
     double top_charge_complex[2];
-    // top_charge(top_charge_complex, U);
+    top_charge(top_charge_complex, U);
+    top_charge_array[k] = top_charge_complex[0];
     // top_charge_array[j] = top_charge_complex[0];
     clock_gettime(CLOCK_MONOTONIC, &now);
     elapsed = (now.tv_sec - start.tv_sec);
     elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
-    // printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
+    printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
 
     int j;
     for (j = k; j < smearing_steps; j++) {
         ape_smear_yz(V, U, alpha);
         top_charge(top_charge_complex, V);
+        top_charge_array[j+1] = top_charge_complex[0];
         // top_charge_array[j] = top_charge_complex[0];
         clock_gettime(CLOCK_MONOTONIC, &now);
         elapsed = (now.tv_sec - start.tv_sec);
@@ -108,16 +105,27 @@ int main(int argc, char *argv[]) {
             out_file = (char*)realloc(out_file, path_length+1);
             sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
             write_nersc(V, out_file, header, header_length);
-            // free(out_file);
         }
         memcpy(U, V, sizeof(double)*CLENGTH);
     }
+
+    // Write out top charges
+
+    path_length = snprintf(NULL, 0, "%s/top_charge_s%d.%s", out_dir, k+1, config_number);
+    char *tc_out;
+    tc_out = (char*)malloc(sizeof(char)*(path_length+1));
+    sprintf(tc_out, "%s/top_charge_s%d.%s", out_dir, k+1, config_number);
+
+    FILE *tc_file = fopen(tc_out, "wb");
+    fwrite(top_charge_array, sizeof(double), LENGTH(top_charge_array), tc_file);
+    fclose(tc_file);
 
     free(U);
     free(V);
     free(header);
     free(in_file);
     free(out_file);
+    free(tc_out);
 
     
     clock_gettime(CLOCK_MONOTONIC, &finish);
