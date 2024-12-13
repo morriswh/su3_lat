@@ -19,106 +19,70 @@ int main(int argc, char *argv[]) {
 
     // omp_set_num_threads(16);
 
-    struct timespec start, now, finish;
-    double elapsed;
-    
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    
     if (argc == 1) {
         printf("Input should look like: \n");
-        printf("%s config_number config_path out_dir\n", argv[0]);
+        printf("%s config_number config_path\n", argv[0]);
         exit(1);
     }
 
+    struct timespec start, now, finish;
+    double elapsed;
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     char *config_number = argv[1];
     char *config = argv[2];
-    char *out_dir = argv[3];
-
-    int header_length = 0;
-    double alpha = 0.3;
-    int smearing_steps = 2;
-
-    int path_length;
-    char *in_file, *out_file;
-    int i = 0;
-    int k = 0;
-
-    // for in_file
-    path_length = snprintf(NULL, 0, config);
-    in_file = (char*)malloc(path_length+1);
-    sprintf(in_file, config);
-
-    // for out_file
-    path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
-    out_file = (char*)malloc(path_length+1);
-    sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
-
-    struct stat buffer;
-    // while (stat(out_file, &buffer) == 0 && i < smearing_steps) {
-    for (i = 0; i < smearing_steps; i++) {
-
-        path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
-        out_file = (char*)realloc(out_file, path_length+1);
-        sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, i+1, config_number);
-
-        if ( stat(out_file, &buffer) == 0 ) { // if exists
-            k++;
-            // free(in_file);
-            in_file = (char*)realloc(in_file, path_length+1);
-            // sprintf(in_file, "%s", out_file);
-            memcpy(in_file, out_file, sizeof(char)*(path_length+1));
-
-            // free(out_file);
-        }
-
-    }
-
-    double *U, *V;
+    
+    
+    double *U;
     U = (double*)calloc(CLENGTH, sizeof(double));
-    V = (double*)calloc(CLENGTH, sizeof(double));
     memset(U, 0, CLENGTH*sizeof(double));
 
     char *header;
     header = (char*)malloc(600*sizeof(char));
     memset(header, 0, 600*sizeof(char));
 
+    int header_length = 0;
+    read_nersc(U, config, header, &header_length);
 
-    read_nersc(U, in_file, header, &header_length);
+    double alpha = 0.3;
 
-    // double top_charge_array[smearing_steps];
-    double top_charge_complex[2];
-    // top_charge(top_charge_complex, U);
-    // top_charge_array[j] = top_charge_complex[0];
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    elapsed = (now.tv_sec - start.tv_sec);
-    elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
-    // printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
+    // make coefficients
+    double one_minus_alpha_matrix_sc = 1 - alpha;
+    double alpha_matrix_div_six_sc = alpha/6.0;
 
-    int j;
-    for (j = k; j < smearing_steps; j++) {
-        ape_smear_yz(V, U, alpha);
-        top_charge(top_charge_complex, V);
-        // top_charge_array[j] = top_charge_complex[0];
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        elapsed = (now.tv_sec - start.tv_sec);
-        elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
-        printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
-        if ( j == 1 ) {
-            path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
-            out_file = (char*)realloc(out_file, path_length+1);
-            sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
-            write_nersc(V, out_file, header, header_length);
-            // free(out_file);
-        }
-        memcpy(U, V, sizeof(double)*CLENGTH);
-    }
+    double one_minus_alpha_matrix[X], alpha_matrix_div_six[X];
+
+    bzero(one_minus_alpha_matrix, sizeof(one_minus_alpha_matrix));
+    one_minus_alpha_matrix[0] = 1 - alpha;
+    one_minus_alpha_matrix[8] = 1 - alpha;
+    one_minus_alpha_matrix[16] = 1 - alpha;
+
+    bzero(alpha_matrix_div_six, sizeof(alpha_matrix_div_six));
+    alpha_matrix_div_six[0] = alpha/6.0;
+    alpha_matrix_div_six[8] = alpha/6.0;
+    alpha_matrix_div_six[16] = alpha/6.0;
+
+    double mat[X];
+    double sca[X], mmu[X];
+    get_link(mat, U, 0);
+    matmul(mmu, one_minus_alpha_matrix, mat);
+    cmmul(sca, one_minus_alpha_matrix_sc, mat);
+    print_link(mmu);
+    print_link(sca);
+
+
+
+
+    // double aplaq, splaq, tplaq;
+    //
+    // all_plaquettes(U, &aplaq, &splaq, &tplaq);
+    //
+    // printf( "{Plaquette} %1.15f {Spatial} %1.15f "
+	   //   "{Temporal} %1.15f \n\n" , aplaq , splaq , tplaq ) ; 
 
     free(U);
-    free(V);
     free(header);
-    free(in_file);
-    free(out_file);
-
     
     clock_gettime(CLOCK_MONOTONIC, &finish);
     
