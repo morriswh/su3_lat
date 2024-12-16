@@ -219,10 +219,12 @@ int mod(int value, int period) {
 void matmul(double *z, double *x, double *y) {
     double u[X];
     double v[X];
-    for (int i = 0; i < X; i++) {
-        u[i] = x[i];
-        v[i] = y[i];
-    }
+    memcpy(u,x,X*sizeof(double));
+    memcpy(v,y,X*sizeof(double));
+    // for (int i = 0; i < X; i++) {
+    //     u[i] = x[i];
+    //     v[i] = y[i];
+    // }
 
     z[0]  = u[0]*v[0]   - u[1]*v[1]   + u[2]*v[6]          // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]
           - u[3]*v[7]   + u[4]*v[12]  - u[5]*v[13];        // 

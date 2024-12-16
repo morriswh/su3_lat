@@ -5,11 +5,13 @@
 #include <sys/resource.h>
 #include <inttypes.h>
 #include <lapacke.h>
+#include <complex.h>
 // #include <gmp.h>
 // #include <mpfr.h>
 #include <math.h>
 #include <time.h>
 #include "sizes.h"
+#include "matops.h"
 #include "su3lib.h"
 #include "apelib.h"
 
@@ -18,19 +20,19 @@ enum dim{mu_x, mu_y, mu_z, mu_t};
 void ape_smear_yz(double *V, double *U, double alpha) {
 
     // make coefficients
-    double one_minus_alpha_matrix = 1 - alpha;
-    double alpha_matrix_div_six = alpha/6.0;
+    double one_minus_alpha = 1 - alpha;
+    double alpha_div_six = alpha/6.0;
 
     int i, mu, nu;
     #pragma omp parallel for collapse(2) private(i, mu, nu)
     for (i = 0; i < LVOLUME; i++) {
         for (mu = 0; mu < D; mu++) {
-            if ( mu == mu_x || mu == mu_y || mu == mu_z ) {
+            if ( mu == mu_y || mu == mu_z ) {
                 double base[X], staple[X], staple_sum[X];
                 bzero(staple_sum, sizeof(staple_sum));
                 memcpy(base, &U[X*(D*i + mu)], sizeof(double)*X);
-                for (nu = 0; nu < D; nu++) {
-                    if (nu == mu) {
+                for (nu = 1; nu < D-1; nu++) { // what am I supposed to include here?
+                    if (nu == mu) {            // defer to what GLU does for now
                         continue;
                     }
                     else {
@@ -40,13 +42,13 @@ void ape_smear_yz(double *V, double *U, double alpha) {
                         }
                     }
                 }
-                cmmul(base, one_minus_alpha_matrix, base);
-                cmmul(staple_sum, alpha_matrix_div_six, staple_sum);
+                cmmul(base, one_minus_alpha, base);
+                cmmul(staple_sum, alpha_div_six, staple_sum);
                 for (int j = 0; j < X; j++) {
                     base[j] += staple_sum[j];
                 }
                 memcpy(&V[X*(D*i + mu)], base, sizeof(double)*X);
-                gram_schmidt_per(&V[X*(D*i + mu)]);
+                newton_reunit(&V[X*(D*i + mu)]);
             }
             else {
                 memcpy(&V[X*(D*i + mu)], &U[X*(D*i + mu)], sizeof(double)*X);
@@ -189,6 +191,62 @@ void gram_schmidt_per(double *link) {
     
 }
 
+void newton_reunit(double *m) {
+
+    // Either rewrite this without using complex.h, or rewrite everything
+    // to use complex.h. Might be better to just do that
+
+    double complex mc[9];
+    for (int i = 0; i < 9; i++) {
+        mc[i] = m[2*i] + m[2*i+1]*I;
+    }
+
+    double detm[2];
+    det(detm, m);
+
+    double complex detmc = detm[0] + detm[1]*I;
+
+    double complex one_div_det_cube_root = 1.0/cpowf(detmc, 1.0/3.0);
+
+    for (int i = 0; i < 9; i++) {
+        mc[i] = one_div_det_cube_root*mc[i];
+    }
+
+    for (int i = 0; i < 9; i++) {
+        m[2*i] = creal(mc[i]);
+        m[2*i+1] = cimag(mc[i]);
+    }
+
+    double delta = 1.0;
+
+    double x[X], xai[X], xn[X];
+    memcpy(x, mc, X*sizeof(double));
+
+    while (delta > 10E-15) {
+
+        delta = 0.0;
+        double xa[X], xi[X];
+        adjoint(xa, x);
+        inverse(xai, xa);
+
+        for (int i = 0; i < X; i++) {
+            xn[i] = 0.5*(x[i] + xai[i]);
+        }
+
+        adjoint(xa,xn);
+        matmul(xi,xa,xn);
+        for (int i = 0; i < X; i++) {
+            delta += fabs(xi[i]);
+        }
+        delta -= 3.0;
+        // printf("%.15lf\n", delta);
+
+        memcpy(x, xn, X*sizeof(double));
+    }
+
+    memcpy(m, x, X*sizeof(double));
+
+}
 
 
 

@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 
     int header_length = 0;
     double alpha = 0.3;
-    int smearing_steps = 11;
+    int smearing_steps = 10;
 
     int path_length;
     char *in_file, *out_file;
@@ -79,6 +79,8 @@ int main(int argc, char *argv[]) {
 
     read_nersc(U, in_file, header, &header_length);
 
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     double top_charge_array[smearing_steps+1];
     double top_charge_complex[2];
     top_charge(top_charge_complex, U);
@@ -88,7 +90,6 @@ int main(int argc, char *argv[]) {
     elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
     printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
 
-    clock_gettime(CLOCK_MONOTONIC, &start);
     int j;
     for (j = k; j < smearing_steps; j++) {
         ape_smear_yz(V, U, alpha);
@@ -116,7 +117,7 @@ int main(int argc, char *argv[]) {
     path_length = snprintf(NULL, 0, "%s/top_charge_s%d.%s", out_dir, k+1, config_number);
     char *tc_out;
     tc_out = (char*)malloc(sizeof(char)*(path_length+1));
-    sprintf(tc_out, "%s/top_charge_s%d.%s", out_dir, k+1, config_number);
+    sprintf(tc_out, "%s/top_charge_s%d.%s", out_dir, k, config_number);
 
     FILE *tc_file = fopen(tc_out, "wb");
     fwrite(top_charge_array, sizeof(double), LENGTH(top_charge_array), tc_file);
