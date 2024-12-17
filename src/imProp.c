@@ -36,9 +36,14 @@ int main(int argc, char *argv[]) {
     char *config = argv[4];
     char *data_dir = argv[5];
 
+    char *header;
+    header = (char*)malloc(600*sizeof(char));
+    bzero(header, 600*sizeof(char));
+    int header_length = 0;
+
     double *U;
     U = (double*)calloc(CLENGTH, sizeof(double));
-    read_nersc(U, config);
+    read_nersc(U, config, header, &header_length);
 
     clock_t begin = clock();
 
@@ -81,6 +86,7 @@ int main(int argc, char *argv[]) {
         FILE *info_file;
         info_file = fopen(info_path, "w");
 
+        fprintf(info_file, header);
         fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\tdenA.imag\tdenB.real\tdenB.imag\n");
         fprintf(info_file, "bmin=%d\n",bmin);
         fprintf(info_file, "bmax=%d\n",bmax);
@@ -218,6 +224,7 @@ int main(int argc, char *argv[]) {
     free(prop_num);
     free(prop_den);
     free(trace_array);
+    free(header);
 
     clock_t end = clock();
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
