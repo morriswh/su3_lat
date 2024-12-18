@@ -1,7 +1,10 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include <sys/resource.h>
 #include <inttypes.h>
 // #include <gmp.h>
@@ -710,6 +713,16 @@ void staples(double *staple, double *U, int spos, int mu, int nu) {
 
 }
 
+void link_trace(double *ltr, double *U) {
+    double res;
+    for (int i = 0; i < LLENGTH; i++) {
+        double tr[2];
+        trace(tr, &U[X*i]);
+        res += tr[0];
+    }
+    *ltr = res / ( LLENGTH * NC );
+}
+
 void transform(double *Up, double *U, double *Om) {
     int pos, opos, fopos;
     int offs, period, h;
@@ -825,12 +838,101 @@ void write_nersc(double *U, char *out_file, char *header, int header_length) {
     fclose(config_file);
 }
 
+void make_header(char *header, int *header_length, double *U) {
+    // First gather all the information
 
+    uint32_t cks = checksum(U);
+    char cksm[9];
+    snprintf(cksm, 9, "%x", cks);
 
+    double tr;
+    link_trace(&tr, U);
+    char ltr[20];
+    snprintf(ltr, 30*sizeof(char), "%.15lf", tr);
 
+    double tplaq, splaq, aplaq;
+    all_plaquettes(U, &aplaq, &splaq, &tplaq);
+    char plaq[20];
+    snprintf(plaq, 30*sizeof(char), "%.15lf", aplaq);
 
+    char label[30];
+    snprintf(label, 30*sizeof(char), "T%dL%d_ape", T, L);
 
+    char *user = getlogin();
 
+    time_t t = time(NULL);
+    struct tm tms = *localtime(&t);
+    char today[72];
+    snprintf(today, 72*sizeof(char), 
+             "%d-%02d-%02d %02d:%02d:%02d", 
+             tms.tm_year + 1900, tms.tm_mon + 1, 
+             tms.tm_mday, tms.tm_hour, tms.tm_min, tms.tm_sec);
 
+    char *inputs[] = {
+        cksm,
+        ltr,
+        plaq,
+        label,
+        user,
+        today
+    };
 
+    // Now make the header
+    char *new_header = malloc(sizeof(char)*1000);
+    // char line[100];
+    int old_index = 0, new_index = 0;
+    // char line_end[] = "END_HEADER\n";
+    char *lines[] = {
+        "CHECKSUM",
+        "LINK_TRACE",
+        "PLAQUETTE",
+        "ENSEMBLE_LABEL",
+        "CREATOR_MACHINE",
+        "CREATION_DATE"
+    };
+    while( old_index < *header_length ){
+        new_header[new_index] = header[old_index];
+        for (int j = 0; j < 6; j++ ) {
+            int prop_size = 0;
+            while (lines[j][prop_size] != '\0') {
+                prop_size++;
+            };
+            if (strncmp(&header[old_index], lines[j], prop_size*sizeof(char)) == 0) {
+                memcpy(&new_header[new_index], lines[j], prop_size*sizeof(char));
+                new_index += prop_size;
+                memcpy(&new_header[new_index], " = ", 3*sizeof(char));
+                new_index += 3;
+                int i = 0;
+                while (inputs[j][i] != '\0') {
+                    new_header[new_index] = inputs[j][i];
+                    i++;
+                    new_index++;
+                };
+                new_header[new_index] = '\n';
+                while (header[old_index] != '\n') {
+                    old_index++;
+                };
+            };
+        };
+        new_index++;
+        old_index++;
+    };
+    new_header[new_index] = '\0';
+    // bzero(header, sizeof(char)*(*header_length));
+    *header_length = new_index;
+    memcpy(header, new_header, sizeof(char)*(*header_length+1));
+    free(new_header);
+}
+
+uint32_t checksum(double *U) {
+    // crc checksum adapted from Hudspith's GLU code
+
+    uint32_t res = 0;
+    for (int i = 0; i < CLENGTH; i++) {
+        uint32_t *buf = (uint32_t*)(U + i);
+        res += *buf + *(buf+1);
+    }
+
+    return res;
+}
 
