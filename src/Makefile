@@ -1,4 +1,4 @@
-file=imProp
+file=main
 
 all: build
 

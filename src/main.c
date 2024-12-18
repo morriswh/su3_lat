@@ -1,6 +1,7 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
@@ -31,59 +32,27 @@ int main(int argc, char *argv[]) {
 
     clock_gettime(CLOCK_MONOTONIC, &start);
 
-    // char *config_number = argv[1];
-    // char *config = argv[2];
-    // 
-    // 
-    // double *U;
-    // U = (double*)calloc(CLENGTH, sizeof(double));
-    // memset(U, 0, CLENGTH*sizeof(double));
-    //
-    // char *header;
-    // header = (char*)malloc(600*sizeof(char));
-    // memset(header, 0, 600*sizeof(char));
-    //
-    // int header_length = 0;
-    // read_nersc(U, config, header, &header_length);
-
-    // double alpha = 0.3;
+    char *config_number = argv[1];
+    char *config = argv[2];
 
 
-    double mat[] = {
-        1.0, 3.0, 0.0, 1.0, 2.0, 0.0,
-        0.0, 1.0, 3.0, 1.0, 4.0, 2.0,
-        3.0, 2.0, 0.0, 0.0, 0.0, 1.0
-    };
-    print_link(mat);
+    double *U;
+    U = (double*)calloc(CLENGTH, sizeof(double));
+    memset(U, 0, CLENGTH*sizeof(double));
 
-    newton_reunit(mat);
+    char *header;
+    header = (char*)malloc(1000*sizeof(char));
+    memset(header, '\0', 1000*sizeof(char));
 
-    print_link(mat);
+    int header_length = 0;
+    read_nersc(U, config, header, &header_length);
 
-    // double mati[X], prod[X];
-    // get_link(mat, U, 0);
-    //
-    // inverse(mati, mat);
-    //
-    // print_link(mat);
-    // printf("=======================\n");
-    // print_link(mati);
-    // printf("=======================\n");
-    // matmul(prod, mat, mati);
-    // print_link(prod);
+    make_header(header, &header_length, U);
+    printf("%s", header);
 
 
-
-
-    // double aplaq, splaq, tplaq;
-    //
-    // all_plaquettes(U, &aplaq, &splaq, &tplaq);
-    //
-    // printf( "{Plaquette} %1.15f {Spatial} %1.15f "
-	   //   "{Temporal} %1.15f \n\n" , aplaq , splaq , tplaq ) ; 
-
-    // free(U);
-    // free(header);
+    free(U);
+    free(header);
     
     clock_gettime(CLOCK_MONOTONIC, &finish);
     

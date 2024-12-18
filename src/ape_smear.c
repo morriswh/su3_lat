@@ -102,12 +102,13 @@ int main(int argc, char *argv[]) {
         if ( j%50 == 49 ) {
             path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
             out_file = (char*)realloc(out_file, path_length+1);
+            make_header(header, &header_length, V);
             sprintf(out_file, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
             write_nersc(V, out_file, header, header_length);
-            double aplaq, splaq, tplaq;
-            all_plaquettes(V, &aplaq, &splaq, &tplaq);
-            printf( "{Plaquette} %1.15f {Spatial} %1.15f "
-	             "{Temporal} %1.15f \n\n" , aplaq , splaq , tplaq ) ; 
+            // double aplaq, splaq, tplaq;
+            // all_plaquettes(V, &aplaq, &splaq, &tplaq);
+            // printf( "{Plaquette} %1.15f {Spatial} %1.15f "
+	           //   "{Temporal} %1.15f \n\n" , aplaq , splaq , tplaq ) ; 
         }
         memcpy(U, V, sizeof(double)*CLENGTH);
     }
