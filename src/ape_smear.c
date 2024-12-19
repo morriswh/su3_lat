@@ -35,6 +35,7 @@ int main(int argc, char *argv[]) {
 
     int header_length = 0;
     double alpha = 0.3;
+    int smear_dir[] = { 0, 1, 1, 0 };
     int smearing_steps = 10;
 
     int path_length;
@@ -92,7 +93,7 @@ int main(int argc, char *argv[]) {
 
     int j;
     for (j = k; j < smearing_steps; j++) {
-        ape_smear_yz(V, U, alpha);
+        ape_smear(V, U, alpha, smear_dir);
         top_charge(top_charge_complex, V);
         top_charge_array[j+1] = top_charge_complex[0];
         clock_gettime(CLOCK_MONOTONIC, &now);

@@ -15,9 +15,7 @@
 #include "su3lib.h"
 #include "apelib.h"
 
-enum dim{mu_x, mu_y, mu_z, mu_t};
-
-void ape_smear_yz(double *V, double *U, double alpha) {
+void ape_smear(double *V, double *U, double alpha, int sdir[4]) {
 
     // make coefficients
     double one_minus_alpha = 1 - alpha;
@@ -27,12 +25,12 @@ void ape_smear_yz(double *V, double *U, double alpha) {
     #pragma omp parallel for collapse(2) private(i, mu, nu)
     for (i = 0; i < LVOLUME; i++) {
         for (mu = 0; mu < D; mu++) {
-            if ( mu == mu_y || mu == mu_z ) {
+            if ( sdir[mu] == 1 ) {
                 double base[X], staple[X], staple_sum[X];
                 bzero(staple_sum, sizeof(staple_sum));
                 memcpy(base, &U[X*(D*i + mu)], sizeof(double)*X);
-                for (nu = 1; nu < D-1; nu++) { // what am I supposed to include here?
-                    if (nu == mu) {            // defer to what GLU does for now
+                for (nu = 0; nu < D; nu++) {
+                    if ( sdir[nu] == 0 ) {
                         continue;
                     }
                     else {

@@ -19,4 +19,6 @@ void inverse(double *a, double *b) {
     LAPACKE_zgetrf(LAPACK_ROW_MAJOR, NC, NC, (lapack_complex_double*)a, NC, IPIV);
     LAPACKE_zgetri(LAPACK_ROW_MAJOR, NC, (lapack_complex_double*)a, NC, IPIV);
 
+    free(IPIV);
+
 }

@@ -1,4 +1,4 @@
-file=main
+file=ape_obs
 
 all: build
 
