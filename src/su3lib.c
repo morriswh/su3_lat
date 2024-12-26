@@ -714,7 +714,7 @@ void staples(double *staple, double *U, int spos, int mu, int nu) {
 }
 
 void link_trace(double *ltr, double *U) {
-    double res;
+    double res = 0;
     for (int i = 0; i < LLENGTH; i++) {
         double tr[2];
         trace(tr, &U[X*i]);
@@ -830,6 +830,7 @@ void write_nersc(double *U, char *out_file, char *header, int header_length) {
     FILE *config_file = fopen(out_file, "wb");
     fwrite(header, sizeof(char), header_length, config_file);
     // fwrite(U, sizeof(double), CLENGTH, config_file);
+
     for (int i = 0; i != CLENGTH; i++) {
         package.element = U[i];
         package.sender = htobe64(package.sender);
@@ -842,28 +843,30 @@ void make_header(char *header, int *header_length, double *U) {
     // First gather all the information
 
     uint32_t cks = checksum(U);
-    char cksm[9];
-    snprintf(cksm, 9, "%x", cks);
+    char cksm[20];
+    snprintf(cksm, 20, "%x", cks);
 
     double tr;
     link_trace(&tr, U);
-    char ltr[20];
-    snprintf(ltr, 30*sizeof(char), "%.15lf", tr);
+    char ltr[30];
+    snprintf(ltr, 30*sizeof(char), "%.14lf", tr);
 
     double tplaq, splaq, aplaq;
     all_plaquettes(U, &aplaq, &splaq, &tplaq);
-    char plaq[20];
-    snprintf(plaq, 30*sizeof(char), "%.15lf", aplaq);
+    char plaq[30];
+    snprintf(plaq, 30*sizeof(char), "%.14lf", aplaq);
 
     char label[30];
     snprintf(label, 30*sizeof(char), "T%dL%d_ape", T, L);
 
-    char *user = getlogin();
+    // char *user = getlogin();
+    char user[10];
+    snprintf(user, 10*sizeof(char), "wayne");
 
     time_t t = time(NULL);
     struct tm tms = *localtime(&t);
-    char today[72];
-    snprintf(today, 72*sizeof(char), 
+    char today[80];
+    snprintf(today, 80*sizeof(char), 
              "%d-%02d-%02d %02d:%02d:%02d", 
              tms.tm_year + 1900, tms.tm_mon + 1, 
              tms.tm_mday, tms.tm_hour, tms.tm_min, tms.tm_sec);
@@ -883,12 +886,12 @@ void make_header(char *header, int *header_length, double *U) {
     int old_index = 0, new_index = 0;
     // char line_end[] = "END_HEADER\n";
     char *lines[] = {
-        "CHECKSUM",
-        "LINK_TRACE",
-        "PLAQUETTE",
-        "ENSEMBLE_LABEL",
-        "CREATOR_MACHINE",
-        "CREATION_DATE"
+        "CHECKSUM\0",
+        "LINK_TRACE\0",
+        "PLAQUETTE\0",
+        "ENSEMBLE_LABEL\0",
+        "CREATOR_MACHINE\0",
+        "CREATION_DATE\0"
     };
     while( old_index < *header_length ){
         new_header[new_index] = header[old_index];
@@ -918,7 +921,7 @@ void make_header(char *header, int *header_length, double *U) {
         old_index++;
     };
     new_header[new_index] = '\0';
-    // bzero(header, sizeof(char)*(*header_length));
+    // // bzero(header, sizeof(char)*(*header_length));
     *header_length = new_index;
     memcpy(header, new_header, sizeof(char)*(*header_length+1));
     free(new_header);
