@@ -1,4 +1,4 @@
-file=ape_obs
+file=ape_smear
 
 all: build
 
@@ -11,5 +11,5 @@ build:
 	ar rcs libsu3lib.a su3lib.o
 	gcc -c apelib.c -o apelib.o -Wall -Wextra -lm --openmp
 	ar rcs libapelib.a apelib.o
-	gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -llapacke -o $(file) -lm --openmp
+	gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -llapacke -lblas -llapack -o $(file) -lm --openmp
 

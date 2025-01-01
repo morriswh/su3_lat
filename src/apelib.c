@@ -21,8 +21,8 @@ void ape_smear(double *V, double *U, double alpha, int sdir[4]) {
     double one_minus_alpha = 1 - alpha;
     double alpha_div_six = alpha/6.0;
 
-    int i, mu, nu;
-    #pragma omp parallel for collapse(2) private(i, mu, nu)
+    int i, j, mu, nu;
+    #pragma omp parallel for collapse(2) private(i, j, mu, nu)
     for (i = 0; i < LVOLUME; i++) {
         for (mu = 0; mu < D; mu++) {
             if ( sdir[mu] == 1 ) {
@@ -30,19 +30,19 @@ void ape_smear(double *V, double *U, double alpha, int sdir[4]) {
                 bzero(staple_sum, sizeof(staple_sum));
                 memcpy(base, &U[X*(D*i + mu)], sizeof(double)*X);
                 for (nu = 0; nu < D; nu++) {
-                    if ( sdir[nu] == 0 ) {
+                    if ( sdir[nu] == 0 || nu == mu ) {
                         continue;
                     }
                     else {
                         staples(staple, U, i, mu, nu);
-                        for (int j = 0; j < X; j++) {
+                        for (j = 0; j < X; j++) {
                             staple_sum[j] += staple[j];
                         }
                     }
                 }
                 cmmul(base, one_minus_alpha, base);
                 cmmul(staple_sum, alpha_div_six, staple_sum);
-                for (int j = 0; j < X; j++) {
+                for (j = 0; j < X; j++) {
                     base[j] += staple_sum[j];
                 }
                 memcpy(&V[X*(D*i + mu)], base, sizeof(double)*X);

@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 
     int header_length = 0;
     double alpha = 0.3;
-    int smear_dir[] = { 0, 1, 1, 0 };
+    int smear_dir[] = { 1, 1, 1, 0 };
     int smearing_steps = 10;
 
     int path_length;
@@ -94,13 +94,13 @@ int main(int argc, char *argv[]) {
     int j;
     for (j = k; j < smearing_steps; j++) {
         ape_smear(V, U, alpha, smear_dir);
-        top_charge(top_charge_complex, V);
-        top_charge_array[j+1] = top_charge_complex[0];
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        elapsed = (now.tv_sec - start.tv_sec);
-        elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
-        printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
-        if ( j%50 == 49 ) {
+        if ( j%10 == 9 ) {
+            top_charge(top_charge_complex, V);
+            top_charge_array[j+1] = top_charge_complex[0];
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            elapsed = (now.tv_sec - start.tv_sec);
+            elapsed += (now.tv_nsec - start.tv_nsec) / 1000000000.0;
+            printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
             path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a0p3_NERSC.%s", out_dir, j+1, config_number);
             out_file = (char*)realloc(out_file, path_length+1);
             make_header(header, &header_length, V);
