@@ -4,7 +4,7 @@
 #include <string.h>
 #include <sys/resource.h>
 #include <inttypes.h>
-#include <lapacke.h>
+// #include <lapacke.h>
 #include <complex.h>
 // #include <gmp.h>
 // #include <mpfr.h>
