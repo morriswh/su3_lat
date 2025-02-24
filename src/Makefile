@@ -1,4 +1,4 @@
-file=zigzag
+file=imProp
 
 all: build
 

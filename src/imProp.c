@@ -2,8 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <errno.h>
 #include <sys/resource.h>
+// #include <unistd.h>
 #include <inttypes.h>
 // #include <gmp.h>
 // #include <mpfr.h>
@@ -24,17 +27,18 @@ void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, int bsteps, 
 
 int main(int argc, char *argv[]) {
 
-    if (argc == 1) {
+    if (argc < 7 || argc > 7) {
         printf("Input should look like: \n");
-        printf("%s n ratio config_number config_path data_dir\n", argv[0]);
+        printf("%s n ratio num_sources config_number config_path data_dir\n", argv[0]);
         exit(1);
     }
 
     int n = atoi(argv[1]);
     double ratio = atof(argv[2]);
-    char *config_number = argv[3];
-    char *config = argv[4];
-    char *data_dir = argv[5];
+    int nSources = atoi(argv[3]);
+    char *config_number = argv[4];
+    char *config = argv[5];
+    char *data_dir = argv[6];
 
     char *header;
     header = (char*)malloc(600*sizeof(char));
@@ -64,18 +68,16 @@ int main(int argc, char *argv[]) {
     srand(4743);
 
     // make a grid of sources, stuck with this way for now
-    int nSources = 64; // nSources < V
+    // int nSources = 2097152; // nSources < V
     /// Assuming lattice has form T = 2*L.
-    int little_L = pow((nSources/2),0.25)+1;
+    int little_L = (int)(ceil(pow((nSources/2),0.25)));
     int little_T = 2*little_L;
     int fact_L = L/little_L;
     int fact_T = T/little_T;
 
-    int tpos, bpos, ypos, tdir, bdir;
     int tmin = 0, tmax = 11;
     int bmin = 3, bmax = 3;
     // double trnum[2], trdenA[2], trdenB[2];
-    int src[4];
 
     // make an info file
     char info_path[200];
@@ -105,17 +107,44 @@ int main(int argc, char *argv[]) {
     int data_length = 6*(bmax-bmin+1)*(tmax-tmin+1); // 3 complex observables -> 6 doubles
     trace_array = (double*)calloc(data_length, sizeof(double));
 
-    int s, t, b;
-    for (s = 0; s < nSources; s++) {
+    // Creat directory structure first, to avoid race condition 
+    // in directory creation with parallel code
+    for (int i = 0; i < T; i++) {
+        char tsubdir[200];
+        sprintf(tsubdir, "%s/%d", data_dir, i);
+        struct stat st = {0};
+        if (stat(tsubdir, &st) == -1) {
+            if (mkdir(tsubdir, 0755) == -1) {
+                printf("Error: %s\n", strerror(errno));
+            }
+        }
+    }
+
+    #pragma omp parallel for
+    for (int s = 0; s < nSources; s++) {
         file_index = 0;
 
-        src[3] = fact_T*(s%little_T);
-        src[2] = fact_L*((s/little_T)%little_L);
-        src[1] = fact_L*(((s/little_T)/little_L)%little_L);
-        src[0] = fact_L*((((s/little_T)/little_L)/little_L)%little_L);
+        // src[3] = fact_T*(s%little_T);
+        // src[2] = fact_L*((s/little_T)%little_L);
+        // src[1] = fact_L*(((s/little_T)/little_L)%little_L);
+        // src[0] = fact_L*((((s/little_T)/little_L)/little_L)%little_L);
+
+        int src[4];
+        src[0] = fact_L*(s%little_L);
+        src[1] = fact_L*((s/little_L)%little_L);
+        src[2] = fact_L*(((s/little_L)/little_L)%little_L);
+        src[3] = fact_T*((((s/little_L)/little_L)/little_L)%little_T);
+
+        int lattice_s = src[0] + L*src[1] + LSQUARE*src[2] + LCUBE*src[3];
+
+        char tsubdir[200];
+        sprintf(tsubdir, "%s/%d", data_dir, src[3]);
 
         char data_path[200];
-        sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.bin", data_dir, argv[2], config_number, src[0], src[1], src[2], src[3]);
+        // sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.bin", tsubdir, argv[2], config_number, src[0], src[1], src[2], src[3]);
+        sprintf(data_path, "%s/r%s_c%s_s%i.bin", tsubdir, argv[2], config_number, lattice_s);
+
+        // continue;
 
         // struct stat buffer;
         if (stat(data_path, &buffer) == 0) {
@@ -132,9 +161,10 @@ int main(int argc, char *argv[]) {
         int mu_b = mu_x;
         int step = ipow(L,mu_b);
         int period = L*step; //only works if transverse direction is not time
+        int tdir, bdir;
 
-        for (t = tmin; t < tmax+1; t++) {
-            for (b = bmin; b < bmax+1; b++) {
+        for (int t = tmin; t < tmax+1; t++) {
+            for (int b = bmin; b < bmax+1; b++) {
 
                 spos = src[0]+L*(src[1]+L*(src[2]+L*src[3]));
                 srcp = X*spos;
