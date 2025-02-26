@@ -45,18 +45,12 @@ int main(int argc, char *argv[]) {
     bzero(header, 600*sizeof(char));
     int header_length = 0;
 
-    double *U;
-    U = (double*)calloc(CLENGTH, sizeof(double));
-    read_nersc(U, config, header, &header_length);
+    double *V;
+    V = (double*)calloc(CLENGTH, sizeof(double));
+    read_nersc(V, config, header, &header_length);
 
-    clock_t begin = clock();
-
-    // propagators
-    double *prop_num;
-    prop_num = (double*)calloc(OLENGTH, sizeof(double));
-
-    double *prop_den;
-    prop_den = (double*)calloc(OLENGTH, sizeof(double));
+    // clock_t begin = clock();
+    double begin = omp_get_wtime();
 
     // // for gauge invariance check
     //
@@ -65,7 +59,7 @@ int main(int argc, char *argv[]) {
     // rnd_gauge_tr(Om);
     // transform(U, U, Om);
     
-    srand(4743);
+    // srand(4743);
 
     // make a grid of sources, stuck with this way for now
     // int nSources = 2097152; // nSources < V
@@ -101,13 +95,7 @@ int main(int argc, char *argv[]) {
         fclose(info_file);
     }
 
-    // stuff for writing data to file
-    int file_index;
-    double *trace_array;
-    int data_length = 6*(bmax-bmin+1)*(tmax-tmin+1); // 3 complex observables -> 6 doubles
-    trace_array = (double*)calloc(data_length, sizeof(double));
-
-    // Creat directory structure first, to avoid race condition 
+    // Create directory structure first, to avoid race condition 
     // in directory creation with parallel code
     for (int i = 0; i < T; i++) {
         char tsubdir[200];
@@ -120,144 +108,193 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    #pragma omp parallel for
-    for (int s = 0; s < nSources; s++) {
-        file_index = 0;
+    // Set up partition of sources for parallelization
+    int num_threads = omp_get_max_threads();
+    int *sizes;
+    sizes = (int*)calloc(num_threads+1, sizeof(int));
+    int sizes_extent;
+    sizes[0] = 0; // This is sacrosanct
+    if (nSources < num_threads || num_threads == 1) {
+        sizes_extent = 1;
+        sizes[1] = nSources;
+    } else {
+        sizes_extent = num_threads;
 
-        // src[3] = fact_T*(s%little_T);
-        // src[2] = fact_L*((s/little_T)%little_L);
-        // src[1] = fact_L*(((s/little_T)/little_L)%little_L);
-        // src[0] = fact_L*((((s/little_T)/little_L)/little_L)%little_L);
-
-        int src[4];
-        src[0] = fact_L*(s%little_L);
-        src[1] = fact_L*((s/little_L)%little_L);
-        src[2] = fact_L*(((s/little_L)/little_L)%little_L);
-        src[3] = fact_T*((((s/little_L)/little_L)/little_L)%little_T);
-
-        int lattice_s = src[0] + L*src[1] + LSQUARE*src[2] + LCUBE*src[3];
-
-        char tsubdir[200];
-        sprintf(tsubdir, "%s/%d", data_dir, src[3]);
-
-        char data_path[200];
-        // sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.bin", tsubdir, argv[2], config_number, src[0], src[1], src[2], src[3]);
-        sprintf(data_path, "%s/r%s_c%s_s%i.bin", tsubdir, argv[2], config_number, lattice_s);
-
-        // continue;
-
-        // struct stat buffer;
-        if (stat(data_path, &buffer) == 0) {
-            printf("%s already exists. Skipping.\n", data_path);
-            continue;
+        int high = nSources/sizes_extent + 1;
+        int low = nSources/sizes_extent;
+        int num_high = nSources%sizes_extent;
+        for (int i = 0; i < num_high; i++) {
+            sizes[i+1] = sizes[i] + high;
         }
-
-        printf("On source: (%d, %d, %d, %d)\n", src[0], src[1], src[2], src[3]);
-
-        int spos, srcp;
-        double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
-        // choose directions for loop
-        int mu_r = mu_z;
-        int mu_b = mu_x;
-        int step = ipow(L,mu_b);
-        int period = L*step; //only works if transverse direction is not time
-        int tdir, bdir;
-
-        for (int t = tmin; t < tmax+1; t++) {
-            for (int b = bmin; b < bmax+1; b++) {
-
-                spos = src[0]+L*(src[1]+L*(src[2]+L*src[3]));
-                srcp = X*spos;
-
-                memset(prop_num, 0, sizeof(double)*OLENGTH);
-                memcpy(&prop_num[srcp],source,sizeof(double)*X);
-
-                // Numerator
-                tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, ratio);
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=1);
-                spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, ratio);
-                // mem copy to RH denominator, because first half of loop is the same as numerator 
-                memcpy(prop_den, prop_num, sizeof(double)*OLENGTH);
-                // Finish numerator
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, -ratio);
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=-1);
-                spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, -ratio);
-
-                // trace(trnum, &prop_num[srcp]);
-                trace(&trace_array[file_index], &prop_num[srcp]);
-                // printf("Trace: (%.12e) + i(%.12e)\n", trnum[0], trnum[1]);
-
-                // RH denominator
-
-                // set correct bperp position
-                bdir = 1;
-                spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, ratio);
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
-                spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, ratio);
-
-                // trace(trdenA, &prop_den[srcp]);
-                trace(&trace_array[file_index+2], &prop_den[srcp]);
-                // printf("Trace: (%.12e) + i(%.12e)\n", trdenA[0], trdenA[1]);
-
-                //LH denominator
-                memset(prop_den, 0, sizeof(double)*OLENGTH);
-                memcpy(&prop_den[srcp],source,sizeof(double)*X);
-
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-
-                tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=1);
-                spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
-                spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
-                spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
-
-                // trace(trdenB, &prop_den[srcp]);
-                trace(&trace_array[file_index+4], &prop_den[srcp]);
-                // printf("Trace: (%.12e) + i(%.12e)\n", trdenB[0], trdenB[1]);
-
-                // fprintf(data_file, "%d\t%d\t%d\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\n", 
-                //         index++, t, b, trnum[0], trnum[1], trdenA[0], trdenA[1],
-                //         trdenB[0], trdenB[1]);
-
-                // increase file_index by the number of columns
-                file_index += 6;
-
-            }
+        for (int i = num_high; i < sizes_extent; i++) {
+            sizes[i+1] = sizes[i] + low;
         }
-
-        // write the file all at once so it doesn't just sit there open
-        FILE *data_file;
-        data_file = fopen(data_path, "wb");
-        fwrite(trace_array, sizeof(double), data_length, data_file);
-        fclose(data_file);
-
     }
 
-    free(U);
+
+    #pragma omp parallel for
+    for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
+
+        double *U;
+        U = (double*)calloc(CLENGTH, sizeof(double));
+        memcpy(U, V, sizeof(double)*CLENGTH);
+
+        // propagators
+        double *prop_num;
+        prop_num = (double*)calloc(OLENGTH, sizeof(double));
+
+        double *prop_den;
+        prop_den = (double*)calloc(OLENGTH, sizeof(double));
+
+        // stuff for writing data to file
+        int file_index;
+        double *trace_array;
+        int data_length = 6*(bmax-bmin+1)*(tmax-tmin+1); // 3 complex observables -> 6 doubles
+        trace_array = (double*)calloc(data_length, sizeof(double));
+
+        for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
+            file_index = 0;
+
+            // src[3] = fact_T*(s%little_T);
+            // src[2] = fact_L*((s/little_T)%little_L);
+            // src[1] = fact_L*(((s/little_T)/little_L)%little_L);
+            // src[0] = fact_L*((((s/little_T)/little_L)/little_L)%little_L);
+
+            int src[4];
+            src[0] = fact_L*(s%little_L);
+            src[1] = fact_L*((s/little_L)%little_L);
+            src[2] = fact_L*(((s/little_L)/little_L)%little_L);
+            src[3] = fact_T*((((s/little_L)/little_L)/little_L)%little_T);
+
+            int lattice_s = src[0] + L*src[1] + LSQUARE*src[2] + LCUBE*src[3];
+
+            char tsubdir[200];
+            sprintf(tsubdir, "%s/%d", data_dir, src[3]);
+
+            char data_path[200];
+            // sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.bin", tsubdir, argv[2], config_number, src[0], src[1], src[2], src[3]);
+            sprintf(data_path, "%s/r%s_c%s_s%i.bin", tsubdir, argv[2], config_number, lattice_s);
+
+            // continue;
+
+            // struct stat buffer;
+            if (stat(data_path, &buffer) == 0) {
+                printf("%s already exists. Skipping.\n", data_path);
+                continue;
+            }
+
+            // printf("On thread: %d\n", parallel_s);
+            // printf("On source: (%d, %d, %d, %d)\n", src[0], src[1], src[2], src[3]);
+
+            int spos, srcp;
+            double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
+            // choose directions for loop
+            int mu_r = mu_z;
+            int mu_b = mu_x;
+            int step = ipow(L,mu_b);
+            int period = L*step; //only works if transverse direction is not time
+            int tdir, bdir;
+
+            for (int t = tmin; t < tmax+1; t++) {
+                for (int b = bmin; b < bmax+1; b++) {
+
+                    spos = src[0]+L*(src[1]+L*(src[2]+L*src[3]));
+                    srcp = X*spos;
+
+                    memset(prop_num, 0, sizeof(double)*OLENGTH);
+                    memcpy(&prop_num[srcp],source,sizeof(double)*X);
+
+                    // Numerator
+                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, ratio);
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=1);
+                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, ratio);
+                    // mem copy to RH denominator, because first half of loop is the same as numerator 
+                    memcpy(prop_den, prop_num, sizeof(double)*OLENGTH);
+                    // Finish numerator
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, -ratio);
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=-1);
+                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, -ratio);
+
+                    // trace(trnum, &prop_num[srcp]);
+                    trace(&trace_array[file_index], &prop_num[srcp]);
+                    // printf("Trace: (%.12e) + i(%.12e)\n", trnum[0], trnum[1]);
+
+                    // RH denominator
+
+                    // set correct bperp position
+                    bdir = 1;
+                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, ratio);
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
+                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, ratio);
+
+                    // trace(trdenA, &prop_den[srcp]);
+                    trace(&trace_array[file_index+2], &prop_den[srcp]);
+                    // printf("Trace: (%.12e) + i(%.12e)\n", trdenA[0], trdenA[1]);
+
+                    //LH denominator
+                    memset(prop_den, 0, sizeof(double)*OLENGTH);
+                    memcpy(&prop_den[srcp],source,sizeof(double)*X);
+
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+
+                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=1);
+                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
+                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+                    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
+                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
+
+                    // trace(trdenB, &prop_den[srcp]);
+                    trace(&trace_array[file_index+4], &prop_den[srcp]);
+                    // printf("Trace: (%.12e) + i(%.12e)\n", trdenB[0], trdenB[1]);
+
+                    // fprintf(data_file, "%d\t%d\t%d\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\n", 
+                    //         index++, t, b, trnum[0], trnum[1], trdenA[0], trdenA[1],
+                    //         trdenB[0], trdenB[1]);
+
+                    // increase file_index by the number of columns
+                    file_index += 6;
+
+                }
+            }
+
+            // write the file all at once so it doesn't just sit there open
+            FILE *data_file;
+            data_file = fopen(data_path, "wb");
+            fwrite(trace_array, sizeof(double), data_length, data_file);
+            fclose(data_file);
+
+        }
+        free(U);
+        free(prop_num);
+        free(prop_den);
+        free(trace_array);
+    }
+
+    free(V);
+    free(sizes);
     // free(Om);
-    free(prop_num);
-    free(prop_den);
-    free(trace_array);
     free(header);
 
-    clock_t end = clock();
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    // clock_t end = clock();
+    // double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    double end = omp_get_wtime();
+    double time_spent = end - begin;
     printf("Elapsed time: %lfs\n", time_spent);
 
     return 0;

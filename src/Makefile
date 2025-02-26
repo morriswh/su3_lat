@@ -1,4 +1,5 @@
 file=imProp
+file2=imProp_serial
 
 all: build
 
@@ -11,5 +12,5 @@ build:
 	ar rcs libsu3lib.a su3lib.o
 	gcc -c apelib.c -o apelib.o -Wall -Wextra -lm --openmp
 	ar rcs libapelib.a apelib.o
-	gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -o $(file) -lm --openmp
+	gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -g -o $(file) -lm --openmp
 
