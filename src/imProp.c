@@ -49,6 +49,24 @@ int main(int argc, char *argv[]) {
     V = (double*)calloc(CLENGTH, sizeof(double));
     read_nersc(V, config, header, &header_length);
 
+    char read_cksm[20];
+    char label[] = "CHECKSUM\0";
+    find_value(read_cksm, label, 8, header, header_length);
+    printf("Read checksum from header = %s\n", read_cksm);
+    uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
+
+    uint32_t cks = checksum(U);
+    char cksm[20];
+    snprintf(cksm, 20, "%x", cks);
+    printf("Computed checksum = %s\n", cksm);
+
+    uint32_t cks_diff = read_cks-cks;
+    printf("Difference = %u\n", cks_diff);
+    if (cks_diff != 0) {
+        printf("checksum failed!\n");
+        exit(1);
+    }
+
     // clock_t begin = clock();
     double begin = omp_get_wtime();
 
@@ -130,6 +148,8 @@ int main(int argc, char *argv[]) {
             sizes[i+1] = sizes[i] + low;
         }
     }
+
+    double trace_array_average[] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
 
 
     #pragma omp parallel for

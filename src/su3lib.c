@@ -839,6 +839,22 @@ void write_nersc(double *U, char *out_file, char *header, int header_length) {
     fclose(config_file);
 }
 
+void find_value(char *value, char *label, int label_length, char *header, int header_length) {
+    for (int i = 0; i < header_length; i++) {
+        if (strncmp(&header[i], label, label_length*sizeof(char)) == 0) {
+            i = i + label_length + 3; // the 3 is for ' = '
+            int j = 0;
+            while (header[i] != '\n') {
+                value[j] = header[i];
+                i++;
+                j++;
+            }
+            value[j] = '\0';
+            break;
+        }
+    }
+}
+
 void make_header(char *header, int *header_length, double *U) {
     // First gather all the information
 

@@ -25,6 +25,7 @@ void rnd_config(double *U);
 void rnd_gauge_tr(double *Omega);
 void read_nersc(double *U, char *config, char *header, int *header_length);
 void write_nersc(double *U, char *out_file, char *header, int header_length);
+void find_value(char *value, char *label, int label_length, char *header, int header_length);
 void make_header(char *header, int *header_length, double *U);
 uint32_t checksum(double *U);
 
