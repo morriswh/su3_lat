@@ -17,6 +17,9 @@
 
 void stoia(int *output, char *input);
 void swap(double **left, double **right);
+void compute_and_write_topological_charge_density(double *U, char *out_dir,
+                                                  size_t step, char *alpha_str,
+                                                  char *config_number);
 
 int main(int argc, char *argv[]) {
 
@@ -127,13 +130,13 @@ int main(int argc, char *argv[]) {
 
     double now = omp_get_wtime();
     double elapsed = now - begin;
-    printf("[ %lf ] Top. charge: %lf\n", elapsed, top_charge_complex[0]);
+    printf("[ %lf ] Top. charge: %.15lf\n", elapsed, top_charge_complex[0]);
 
     double *W1 = U;
     double *W2 = V;
 
     for (size_t j = k; j < smearing_steps; j++) {
-        ape_smear(W2, W1, alpha, smear_dir);
+        ape_smear_fast(W2, W1, alpha, smear_dir);
 
         if ( j%tc_keep_interval == tc_keep_interval-1 ) {
             top_charge(top_charge_complex, W2);
@@ -141,8 +144,12 @@ int main(int argc, char *argv[]) {
 
             now = omp_get_wtime();
             elapsed = now - begin;
-            printf("[ %lf ] Top. charge: %.8lf\n", 
+            printf("[ %lf ] Top. charge: %.15lf\n", 
                    elapsed, top_charge_complex[0]);
+
+            compute_and_write_topological_charge_density(W2, out_dir, 
+                                                         j+1, alpha_str, 
+                                                         config_number);
         }
 
         if ( j%keep_interval == keep_interval-1 ) {
@@ -185,8 +192,7 @@ int main(int argc, char *argv[]) {
     free(header);
     free(in_file);
     free(out_file);
-    /*free(tc_out);*/
-
+    free(tc_out);
 
     return 0;
 }
@@ -218,4 +224,45 @@ void swap(double **left, double **right) {
     *right = swap;
 }
 
+void compute_and_write_topological_charge_density(double *U, char *out_dir,
+                                                  size_t step, char *alpha_str,
+                                                  char *config_number) {
+
+    // first perform the computation
+
+    double *top_charge_density_array;
+    top_charge_density_array = (double*)calloc(LVOLUME, sizeof(double));
+
+    #pragma omp parallel for
+    for (size_t spos = 0; spos < LVOLUME; spos++) {
+        double tcharge_density[2] = {0};
+        top_charge_density(tcharge_density, U, spos);
+        memcpy(&top_charge_density_array[spos],
+               &tcharge_density[0],sizeof(double));
+    }
+
+    // next prepare file name
+
+    int path_length = snprintf(NULL, 0, 
+                               "%s/top_charge_density_st%d_ape_a%s_NERSC.%s", 
+                               out_dir, step, alpha_str, config_number);
+    char *tcd_out;
+    tcd_out = (char*)malloc(sizeof(char)*(path_length+1));
+    sprintf(tcd_out, "%s/top_charge_density_st%d_ape_a%s_NERSC.%s", 
+            out_dir, step, alpha_str, config_number);
+
+
+    // then write to file
+
+    FILE *tcd_file = fopen(tcd_out, "wb");
+    fwrite(top_charge_density_array, sizeof(double), 
+           LVOLUME, tcd_file);
+    fclose(tcd_file);
+
+    // finally free memory
+
+    free(top_charge_density_array);
+    free(tcd_out);
+
+}
 

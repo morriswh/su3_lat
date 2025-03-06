@@ -21,28 +21,27 @@ void ape_smear(double *V, double *U, double alpha, int sdir[4]) {
     double one_minus_alpha = 1 - alpha;
     double alpha_div_six = alpha/6.0;
 
-    int i, j, mu, nu;
-    #pragma omp parallel for collapse(2) private(i, j, mu, nu)
-    for (i = 0; i < LVOLUME; i++) {
-        for (mu = 0; mu < D; mu++) {
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < LVOLUME; i++) {
+        for (int mu = 0; mu < D; mu++) {
             if ( sdir[mu] == 1 ) {
                 double base[X], staple[X], staple_sum[X];
                 bzero(staple_sum, sizeof(staple_sum));
                 memcpy(base, &U[X*(D*i + mu)], sizeof(double)*X);
-                for (nu = 0; nu < D; nu++) {
+                for (int nu = 0; nu < D; nu++) {
                     if ( sdir[nu] == 0 || nu == mu ) {
                         continue;
                     }
                     else {
                         staples(staple, U, i, mu, nu);
-                        for (j = 0; j < X; j++) {
+                        for (int j = 0; j < X; j++) {
                             staple_sum[j] += staple[j];
                         }
                     }
                 }
                 cmmul(base, one_minus_alpha, base);
                 cmmul(staple_sum, alpha_div_six, staple_sum);
-                for (j = 0; j < X; j++) {
+                for (int j = 0; j < X; j++) {
                     base[j] += staple_sum[j];
                 }
                 memcpy(&V[X*(D*i + mu)], base, sizeof(double)*X);
@@ -63,24 +62,23 @@ void ape_smear_fast(double *V, double *U, double alpha, int sdir[4]) {
 
     memcpy(V, U, sizeof(double)*CLENGTH);
 
-    int i, j, mu, nu;
-    #pragma omp parallel for collapse(2) private(i, j, mu, nu)
-    for (i = 0; i < LVOLUME; i++) {
-        for (mu = 0; mu < D; mu++) {
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < LVOLUME; i++) {
+        for (int mu = 0; mu < D; mu++) {
             if ( sdir[mu] == 1 ) {
                 double staple[X], staple_sum[X];
                 bzero(staple_sum, sizeof(staple_sum));
-                for (nu = 0; nu < D; nu++) {
+                for (int nu = 0; nu < D; nu++) {
                     if ( sdir[nu] != 0 && nu != mu ) {
                         staples(staple, U, i, mu, nu);
-                        for (j = 0; j < X; j++) {
+                        for (int j = 0; j < X; j++) {
                             staple_sum[j] += staple[j];
                         }
                     }
                 }
                 cmmul(&V[X*(D*i + mu)], one_minus_alpha, &V[X*(D*i + mu)]);
                 cmmul(staple_sum, alpha_div_six, staple_sum);
-                for (j = 0; j < X; j++) {
+                for (int j = 0; j < X; j++) {
                     V[X*(D*i + mu)+j] += staple_sum[j];
                 }
                 newton_reunit(&V[X*(D*i + mu)]);

@@ -444,7 +444,7 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
 
     double temp[X], leaf[X];
     // double clover_l1[X], clover_l2[X], clover_l3[X], clover_l4[X];
-    int pos, i;
+    int pos;
     int step_mu, step_nu, stride_mu, stride_nu;
 
     if (mu == 0) {
@@ -481,11 +481,6 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
         stride_nu = LVOLUME;
     }
 
-    #pragma omp parallel private(temp, pos, leaf, i)
-    #pragma omp single
-    {
-        #pragma omp task
-        {
             // Top right leaf
 
             pos = D*spos + mu;
@@ -505,13 +500,10 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             adjoint(temp, temp);
             matmul(leaf, leaf, temp);
 
-            for (i = 0; i < X; i++) {
+            for (int i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
-        }
 
-        #pragma omp task
-        {
             // Top left leaf
 
             pos = D*spos + nu;
@@ -532,13 +524,10 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             get_link(temp, U, mod(pos, LLENGTH));
             matmul(leaf, leaf, temp);
 
-            for (i = 0; i < X; i++) {
+            for (int i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
-        }
 
-        #pragma omp task
-        {
             // Bottom left leaf
 
             pos = D*(spos - mod(spos, stride_mu) + mod(spos - step_mu, stride_mu)) + mu;
@@ -560,13 +549,10 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             get_link(temp, U, mod(pos, LLENGTH));
             matmul(leaf, leaf, temp);
 
-            for (i = 0; i < X; i++) {
+            for (int i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
-        }
 
-        #pragma omp task
-        {
             // Bottom right leaf
 
             pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
@@ -587,13 +573,12 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             adjoint(temp, temp);
             matmul(leaf, leaf, temp);
 
-            for (i = 0; i < X; i++) {
+            for (int i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
-        }
-    } // end of single
+
     adjoint(temp, clover);
-    for (i = 0; i < X; i++) {
+    for (int i = 0; i < X; i++) {
         clover[i] -= temp[i];
         clover[i] *= 1.0/8.0;
     }
