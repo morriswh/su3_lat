@@ -17,7 +17,9 @@ void transform(double *Up, double *U, double *Omega); // gauge transformation
 void plaquette(double *plaq, double *U, int spos, int mu, int nu); // plaquette
 void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq);
 void cloverleaf(double *clover, double *U, int spos, int mu, int nu); // clover
-void top_charge(double *tcharge, double *U);
+void top_charge_density(double *topo_charge_density, double *U, int spos); // at one site
+void top_charge_new(double *topo_charge, double *U);
+void top_charge(double *topo_charge, double *U);
 void staples(double *staple, double *U, int spos, int mu, int nu); // staple
 void link_trace(double *ltr, double *U);
 void gauge_action(double *action, double *U);
@@ -26,7 +28,7 @@ void rnd_gauge_tr(double *Omega);
 void read_nersc(double *U, char *config, char *header, int *header_length);
 void write_nersc(double *U, char *out_file, char *header, int header_length);
 void find_value(char *value, char *label, int label_length, char *header, int header_length);
-void make_header(char *header, int *header_length, double *U);
+void make_header(char *header, int *header_length, double *U, char *label);
 uint32_t checksum(double *U);
 
 #endif // !SU3LIB_H

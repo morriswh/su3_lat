@@ -1,5 +1,4 @@
-file=imProp
-file2=imProp_serial
+file=ape_smear
 
 all: build
 

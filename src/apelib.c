@@ -55,6 +55,40 @@ void ape_smear(double *V, double *U, double alpha, int sdir[4]) {
     }
 }
 
+void ape_smear_fast(double *V, double *U, double alpha, int sdir[4]) {
+
+    // make coefficients
+    double one_minus_alpha = 1 - alpha;
+    double alpha_div_six = alpha/6.0;
+
+    memcpy(V, U, sizeof(double)*CLENGTH);
+
+    int i, j, mu, nu;
+    #pragma omp parallel for collapse(2) private(i, j, mu, nu)
+    for (i = 0; i < LVOLUME; i++) {
+        for (mu = 0; mu < D; mu++) {
+            if ( sdir[mu] == 1 ) {
+                double staple[X], staple_sum[X];
+                bzero(staple_sum, sizeof(staple_sum));
+                for (nu = 0; nu < D; nu++) {
+                    if ( sdir[nu] != 0 && nu != mu ) {
+                        staples(staple, U, i, mu, nu);
+                        for (j = 0; j < X; j++) {
+                            staple_sum[j] += staple[j];
+                        }
+                    }
+                }
+                cmmul(&V[X*(D*i + mu)], one_minus_alpha, &V[X*(D*i + mu)]);
+                cmmul(staple_sum, alpha_div_six, staple_sum);
+                for (j = 0; j < X; j++) {
+                    V[X*(D*i + mu)+j] += staple_sum[j];
+                }
+                newton_reunit(&V[X*(D*i + mu)]);
+            }
+        }
+    }
+}
+
 void gram_schmidt(double *U) {
 
     int i;
@@ -193,16 +227,24 @@ void newton_reunit(double *m) {
 
     // Either rewrite this without using complex.h, or rewrite everything
     // to use complex.h. Might be better to just do that
+    //
+    /*union {*/
+    /*    double m[6];*/
+    /*    double complex mc[3];*/
+    /*} mm; */
 
     double complex mc[9];
-    for (int i = 0; i < 9; i++) {
-        mc[i] = m[2*i] + m[2*i+1]*I;
-    }
+    /*for (int i = 0; i < 9; i++) {*/
+    /*    mc[i] = m[2*i] + m[2*i+1]*I;*/
+    /*}*/
+    memcpy(mc,m,sizeof(double)*X);
 
     double detm[2];
     det(detm, m);
 
-    double complex detmc = detm[0] + detm[1]*I;
+    /*double complex detmc = detm[0] + detm[1]*I;*/
+    double complex detmc;
+    memcpy(&detmc,detm,sizeof(double)*2);
 
     double complex one_div_det_cube_root = 1.0/cpowf(detmc, 1.0/3.0);
 
@@ -210,17 +252,13 @@ void newton_reunit(double *m) {
         mc[i] = one_div_det_cube_root*mc[i];
     }
 
-    for (int i = 0; i < 9; i++) {
-        m[2*i] = creal(mc[i]);
-        m[2*i+1] = cimag(mc[i]);
-    }
-
     double delta = 1.0;
 
     double x[X], xai[X], xn[X];
+    // You can directly memcpy a complex to a 2x length real array
     memcpy(x, mc, X*sizeof(double));
 
-    while (delta > 10E-15) {
+    while (delta > 1E-15) {
 
         delta = 0.0;
         double xa[X], xi[X];

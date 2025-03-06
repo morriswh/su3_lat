@@ -600,45 +600,61 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
     // print_link(clover);
 }
 
-void top_charge(double *topo_charge, double *U) {
+void top_charge_density(double *topo_charge_density, double *U, int spos) {
 
     double tcharge[2] = {0};
     // memcpy(tcharge, topo_charge, 2*sizeof(double));
     // memset(tcharge, 0, 2*sizeof(double));
 
-    int spos, i;
+    int i;
     double C1[X], C2[X], C3[X], C4[X], C5[X], C6[X];
     double O1[X], O2[X], O3[X], O4[X], O5[X], O6[X];
     double PT[X];
     double AT[2];
 
-    #pragma omp parallel for private(spos, i, C1, C2, C3, C4, C5, C6, O1, O2, O3, O4, O5, O6, PT, AT) reduction(+: tcharge)
-    for (spos = 0; spos < LVOLUME; spos++) {
+    cloverleaf(C1, U, spos, 0, 1);
+    cloverleaf(C2, U, spos, 0, 2);
+    cloverleaf(C3, U, spos, 0, 3);
+    cloverleaf(C4, U, spos, 2, 1);
+    cloverleaf(C5, U, spos, 1, 3);
+    cloverleaf(C6, U, spos, 3, 2);
 
-        cloverleaf(C1, U, spos, 0, 1);
-        cloverleaf(C2, U, spos, 0, 2);
-        cloverleaf(C3, U, spos, 0, 3);
-        cloverleaf(C4, U, spos, 2, 1);
-        cloverleaf(C5, U, spos, 1, 3);
-        cloverleaf(C6, U, spos, 3, 2);
+    matmul(O1, C1, C6);
+    matmul(O2, C2, C5);
+    matmul(O3, C3, C4);
+    matmul(O4, C4, C3);
+    matmul(O5, C5, C2);
+    matmul(O6, C6, C1);
 
-        matmul(O1, C1, C6);
-        matmul(O2, C2, C5);
-        matmul(O3, C3, C4);
-        matmul(O4, C4, C3);
-        matmul(O5, C5, C2);
-        matmul(O6, C6, C1);
-
-        for (i = 0; i < X; i++) {
-            PT[i] = O1[i] + O2[i] + O3[i] + O4[i] + O5[i] + O6[i];
-        }
-
-        trace(AT, PT);
-        tcharge[0] += AT[0];
-        tcharge[1] += AT[1];
+    for (i = 0; i < X; i++) {
+        PT[i] = O1[i] + O2[i] + O3[i] + O4[i] + O5[i] + O6[i];
     }
-    topo_charge[0] = tcharge[0]/(8.0*pow(PI, 2));
-    topo_charge[1] = tcharge[1]/(8.0*pow(PI, 2));
+
+    trace(AT, PT);
+    tcharge[0] += AT[0];
+    tcharge[1] += AT[1];
+
+    topo_charge_density[0] = tcharge[0]/(8.0*pow(PI, 2));
+    topo_charge_density[1] = tcharge[1]/(8.0*pow(PI, 2));
+}
+
+void top_charge(double *topo_charge, double *U) {
+
+    double tcharge[2] = {0};
+
+    #pragma omp parallel for reduction(+: tcharge)
+    for (int spos = 0; spos < LVOLUME; spos++) {
+
+        double tcharged[2] = {0};
+
+        top_charge_density(tcharged, U, spos);
+
+        tcharge[0] += tcharged[0];
+        tcharge[1] += tcharged[1];
+    }
+
+    topo_charge[0] = tcharge[0];
+    topo_charge[1] = tcharge[1];
 }
 
 void staples(double *staple, double *U, int spos, int mu, int nu) {
@@ -855,8 +871,10 @@ void find_value(char *value, char *label, int label_length, char *header, int he
     }
 }
 
-void make_header(char *header, int *header_length, double *U) {
+void make_header(char *header, int *header_length, double *U, char* label) {
     // First gather all the information
+    // Ultimately this should take a structure as an argument with
+    // all the relavant information
 
     uint32_t cks = checksum(U);
     char cksm[20];
@@ -872,8 +890,8 @@ void make_header(char *header, int *header_length, double *U) {
     char plaq[30];
     snprintf(plaq, 30*sizeof(char), "%.14lf", aplaq);
 
-    char label[30];
-    snprintf(label, 30*sizeof(char), "T%dL%d_ape", T, L);
+    /*char label[30];*/
+    /*snprintf(label, 30*sizeof(char), "T%dL%d_ape", T, L);*/
 
     // char *user = getlogin();
     char user[10];

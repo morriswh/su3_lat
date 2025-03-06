@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
     printf("Read checksum from header = %s\n", read_cksm);
     uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
 
-    uint32_t cks = checksum(U);
+    uint32_t cks = checksum(V);
     char cksm[20];
     snprintf(cksm, 20, "%x", cks);
     printf("Computed checksum = %s\n", cksm);
