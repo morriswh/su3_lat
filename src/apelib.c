@@ -256,10 +256,10 @@ void newton_reunit(double *m) {
     // You can directly memcpy a complex to a 2x length real array
     memcpy(x, mc, X*sizeof(double));
 
-    while (delta > 1E-15) {
+    double xa[X], xi[X];
+    while (delta > 1E-14) {
 
         delta = 0.0;
-        double xa[X], xi[X];
         adjoint(xa, x);
         inverse(xai, xa);
 
@@ -277,6 +277,8 @@ void newton_reunit(double *m) {
 
         memcpy(x, xn, X*sizeof(double));
     }
+    /*print_link(xi);*/
+
 
     memcpy(m, x, X*sizeof(double));
 

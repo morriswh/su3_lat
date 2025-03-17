@@ -19,6 +19,11 @@
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
+struct measurement {
+    int lattice_index;
+    double trace_observable[];
+}
+
 // declaration of functions
 void fbdelta(double *result, double *layer, double *Ulayer, int lpos);
 void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, int tdir, double ratio);
@@ -148,9 +153,6 @@ int main(int argc, char *argv[]) {
             sizes[i+1] = sizes[i] + low;
         }
     }
-
-    double trace_array_average[] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-
 
     #pragma omp parallel for
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {

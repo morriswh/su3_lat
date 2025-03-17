@@ -136,7 +136,9 @@ int main(int argc, char *argv[]) {
     double *W2 = V;
 
     for (size_t j = k; j < smearing_steps; j++) {
+        printf("Before smearing\n");
         ape_smear_fast(W2, W1, alpha, smear_dir);
+        printf("Successfully smeared\n");
 
         if ( j%tc_keep_interval == tc_keep_interval-1 ) {
             top_charge(top_charge_complex, W2);
@@ -151,6 +153,8 @@ int main(int argc, char *argv[]) {
                                                          j+1, alpha_str, 
                                                          config_number);
         }
+
+        printf("Computed topological charge\n");
 
         if ( j%keep_interval == keep_interval-1 ) {
             path_length = snprintf(NULL, 0, "%s/T64L32_E5_ape%d_a%s_NERSC.%s", 

@@ -18,8 +18,9 @@ void plaquette(double *plaq, double *U, int spos, int mu, int nu); // plaquette
 void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq);
 void cloverleaf(double *clover, double *U, int spos, int mu, int nu); // clover
 void top_charge_density(double *topo_charge_density, double *U, int spos); // at one site
-void top_charge_new(double *topo_charge, double *U);
 void top_charge(double *topo_charge, double *U);
+void directional_sum(double *lattice, int *directions, 
+                     double *out_array, int out_array_size);
 void staples(double *staple, double *U, int spos, int mu, int nu); // staple
 void link_trace(double *ltr, double *U);
 void gauge_action(double *action, double *U);

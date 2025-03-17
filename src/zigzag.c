@@ -267,7 +267,8 @@ int compare(int x, int y, int xsteps, int ysteps) {
 
 void source_grid(int *pos, int source, int num_sources) {
 
-    const int little_L = pow((num_sources/2),0.25)+1;
+    const int little_L = (int)(ceil(pow((nSources/2),0.25)));
+    /*const int little_L = pow((num_sources/2),0.25)+1;*/
     const int little_T = 2*little_L;
     const int fact_L = L/little_L;
     const int fact_T = T/little_T;

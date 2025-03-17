@@ -642,6 +642,58 @@ void top_charge(double *topo_charge, double *U) {
     topo_charge[1] = tcharge[1];
 }
 
+void directional_sum(double *lattice, int *directions, 
+                     double *out_array, int out_array_size) {
+
+    // First, we determine the size of the output array, and the size of
+    // elements to be summed over. We also create two shape arrays to help
+    // with the logic for the directional sums.
+
+    int sum_shape[] = {1, 1, 1, 1}; 
+    int out_shape[] = {1, 1, 1, 1}; 
+    int out_size = 1;
+    int sum_size = 1;
+
+    for (int i = 0; i < D-1; i ++) {
+        if (directions[i] == 0) {
+            out_size *= L;
+            out_shape[i] = L;
+        } else {
+            sum_size *= L;
+            sum_shape[i] = L;
+        }
+    }
+    if (directions[3] == 0) {
+        out_size *= T;
+        out_shape[3] = T;
+    } else {
+        sum_size *= T;
+        sum_shape[3] = T;
+    }
+
+    if (out_size != out_array_size) {
+        printf("output array size mismatch!\n");
+        exit(1);
+    }
+
+    for (int i = 0; i < out_size; i++) {
+        for (int j = 0; j < sum_size; j++) {
+            int vali = i;
+            int valj = j;
+            int pos = 0;
+            int coef = 1;
+            for (int k = 0; k < D; k++) {
+                pos += coef*((1-directions[k])*mod(vali, out_shape[k]) + 
+                             directions[k]*mod(valj, sum_shape[k]));
+                vali /= out_shape[k];
+                valj /= sum_shape[k];
+                coef *= L;
+            }
+            out_array[i] += lattice[pos];
+        }
+    }
+}
+
 void staples(double *staple, double *U, int spos, int mu, int nu) {
     // spos is in LVOLUME now
     int step_mu, step_nu, stride_mu, stride_nu;
