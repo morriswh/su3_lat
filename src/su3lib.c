@@ -843,7 +843,7 @@ void gauge_action(double *action, double *U) {
     *action = 2*beta*(3*T*L - sum);
 }
 
-void read_nersc(double *U, char *config, char *header, int *header_length) {
+int read_nersc(double *U, char *config, char *header, int *header_length) {
     // need to figure out the issue with fread and doubles for the NERSC config
     // for now the union method works I guess
     union {
@@ -872,6 +872,26 @@ void read_nersc(double *U, char *config, char *header, int *header_length) {
         U[i] = package.element;
     }
     fclose(config_file);
+
+    char read_cksm[20];
+    char label[] = "CHECKSUM\0";
+    find_value(read_cksm, label, 8, header, *header_length);
+    printf("Read checksum from header = %s\n", read_cksm);
+    uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
+
+    uint32_t cks = checksum(U);
+    char cksm[20];
+    snprintf(cksm, 20, "%x", cks);
+    printf("Computed checksum = %s\n", cksm);
+
+    uint32_t cks_diff = read_cks-cks;
+    printf("Difference = %u\n", cks_diff);
+    if (cks_diff != 0) {
+        printf("checksum failed!\n");
+        return 1;
+    }
+
+    return 0;
 }
 
 void write_nersc(double *U, char *out_file, char *header, int header_length) {

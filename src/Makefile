@@ -1,4 +1,4 @@
-file=top_charge
+file=imProp
 
 all: build
 
@@ -12,5 +12,5 @@ build:
 	gcc -c apelib.c -o apelib.o -Wall -Wextra -lm --openmp
 	ar rcs libapelib.a apelib.o
 	# gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -g -o $(file) -lm --openmp
-	gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o $(file) -lm --openmp
+	gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file) -lm --openmp
 

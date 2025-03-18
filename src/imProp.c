@@ -19,299 +19,129 @@
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
-struct measurement {
-    int lattice_index;
-    double trace_observable[];
-}
+// Creating the structure
+typedef struct {
+    uint32_t *indices; // store lattice index for unordered file write
+    double **measurements; // array of measurements, probably 6 doubles
+    size_t number_of_measurements;
+    size_t size;
+    size_t block_size;
+} measurement_list;
 
-// declaration of functions
+//// declaration of functions
+// compute forward-backward derivative
 void fbdelta(double *result, double *layer, double *Ulayer, int lpos);
-void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, int tdir, double ratio);
-void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, int bsteps, int bdir);
+// compute LMN type propagator [add reference]
+void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, 
+                 int tdir, double ratio);
+// compute transverse links
+void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, 
+                int bsteps, int bdir);
+// create a struct containing dynamic list of measurements
+measurement_list *create_measurement_list(size_t block_size);
+// append a new measurement with lattice index to the list
+int add_measurement_to_list(measurement_list *list, int index, 
+                            double *measurement);
+// delete the list
+void delete_measurement_list(measurement_list *list);
+void source_grid(int *pos, int source, int num_sources);
+void compute_observables(double *trace_array, int spos, double *U, int n, 
+                         double ratio, int t, int b);
+double *read_configuration(char *config);
+void delete_configuration(double *V);
+double *random_gauge_transform(double *V);
+double *copy_configuration(double *V);
+int *setup_parallization(int *sizes_extent, int num_sources);
+void create_info_file(char **inputs);
+void write_data_to_file(measurement_list *list, char **inputs);
+measurement_list *read_data_from_file(char **inputs);
+uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs);
+int in_source_list(uint32_t source, uint32_t *source_list, size_t size);
+
 // void build_string(char *out, char *in[], int length);
 
 int main(int argc, char *argv[]) {
 
-    if (argc < 7 || argc > 7) {
+    if (argc < 9 || argc > 9) {
         printf("Input should look like: \n");
-        printf("%s n ratio num_sources config_number config_path data_dir\n", argv[0]);
+        printf("%s n ratio num_sources b t config_number"
+               " config_path data_dir\n", argv[0]);
         exit(1);
     }
 
     int n = atoi(argv[1]);
     double ratio = atof(argv[2]);
     int nSources = atoi(argv[3]);
-    char *config_number = argv[4];
-    char *config = argv[5];
-    char *data_dir = argv[6];
-
-    char *header;
-    header = (char*)malloc(600*sizeof(char));
-    bzero(header, 600*sizeof(char));
-    int header_length = 0;
-
-    double *V;
-    V = (double*)calloc(CLENGTH, sizeof(double));
-    read_nersc(V, config, header, &header_length);
-
-    char read_cksm[20];
-    char label[] = "CHECKSUM\0";
-    find_value(read_cksm, label, 8, header, header_length);
-    printf("Read checksum from header = %s\n", read_cksm);
-    uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
-
-    uint32_t cks = checksum(V);
-    char cksm[20];
-    snprintf(cksm, 20, "%x", cks);
-    printf("Computed checksum = %s\n", cksm);
-
-    uint32_t cks_diff = read_cks-cks;
-    printf("Difference = %u\n", cks_diff);
-    if (cks_diff != 0) {
-        printf("checksum failed!\n");
-        exit(1);
-    }
+    int b = atoi(argv[4]);
+    int t = atoi(argv[5]);
+    char *config_number = argv[6];
+    char *config = argv[7];
+    char *data_dir = argv[8];
 
     // clock_t begin = clock();
     double begin = omp_get_wtime();
 
-    // // for gauge invariance check
-    //
-    // double *Om;
-    // Om = (double*)calloc(CLENGTH, sizeof(double));
-    // rnd_gauge_tr(Om);
-    // transform(U, U, Om);
-    
-    // srand(4743);
+    double *V = read_configuration(config);
 
-    // make a grid of sources, stuck with this way for now
-    // int nSources = 2097152; // nSources < V
-    /// Assuming lattice has form T = 2*L.
-    int little_L = (int)(ceil(pow((nSources/2),0.25)));
-    int little_T = 2*little_L;
-    int fact_L = L/little_L;
-    int fact_T = T/little_T;
+    create_info_file(argv); // if it doesn't already exist
 
-    int tmin = 0, tmax = 11;
-    int bmin = 3, bmax = 3;
-    // double trnum[2], trdenA[2], trdenB[2];
+    size_t existantSourceNumber; 
+    uint32_t *existantSources = 
+        get_existing_sources(&existantSourceNumber, argv);
+    printf("eS %u\n", existantSources[1]);
 
-    // make an info file
-    char info_path[200];
-    sprintf(info_path, "%s/info", data_dir);
+    printf("Existing sources: %u\n", existantSourceNumber);
 
-    struct stat buffer;
-    if (stat(info_path, &buffer) != 0) {
-        FILE *info_file;
-        info_file = fopen(info_path, "w");
-
-        fprintf(info_file, header);
-        fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\tdenA.imag\tdenB.real\tdenB.imag\n");
-        fprintf(info_file, "bmin=%d\n",bmin);
-        fprintf(info_file, "bmax=%d\n",bmax);
-        fprintf(info_file, "tmin=%d\n",tmin);
-        fprintf(info_file, "tmax=%d\n",tmax);
-        fprintf(info_file, "n=%d\n",n);
-        fprintf(info_file, "r=%lf\n",ratio);
-        fprintf(info_file, "index = b + ncols * t\n");
-
-        fclose(info_file);
-    }
-
-    // Create directory structure first, to avoid race condition 
-    // in directory creation with parallel code
-    for (int i = 0; i < T; i++) {
-        char tsubdir[200];
-        sprintf(tsubdir, "%s/%d", data_dir, i);
-        struct stat st = {0};
-        if (stat(tsubdir, &st) == -1) {
-            if (mkdir(tsubdir, 0755) == -1) {
-                printf("Error: %s\n", strerror(errno));
-            }
-        }
-    }
-
-    // Set up partition of sources for parallelization
-    int num_threads = omp_get_max_threads();
-    int *sizes;
-    sizes = (int*)calloc(num_threads+1, sizeof(int));
+    // setup parallelization
     int sizes_extent;
-    sizes[0] = 0; // This is sacrosanct
-    if (nSources < num_threads || num_threads == 1) {
-        sizes_extent = 1;
-        sizes[1] = nSources;
-    } else {
-        sizes_extent = num_threads;
-
-        int high = nSources/sizes_extent + 1;
-        int low = nSources/sizes_extent;
-        int num_high = nSources%sizes_extent;
-        for (int i = 0; i < num_high; i++) {
-            sizes[i+1] = sizes[i] + high;
-        }
-        for (int i = num_high; i < sizes_extent; i++) {
-            sizes[i+1] = sizes[i] + low;
-        }
-    }
+    int *sizes = setup_parallization(&sizes_extent, nSources);
 
     #pragma omp parallel for
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
-        double *U;
-        U = (double*)calloc(CLENGTH, sizeof(double));
-        memcpy(U, V, sizeof(double)*CLENGTH);
-
-        // propagators
-        double *prop_num;
-        prop_num = (double*)calloc(OLENGTH, sizeof(double));
-
-        double *prop_den;
-        prop_den = (double*)calloc(OLENGTH, sizeof(double));
-
-        // stuff for writing data to file
-        int file_index;
-        double *trace_array;
-        int data_length = 6*(bmax-bmin+1)*(tmax-tmin+1); // 3 complex observables -> 6 doubles
-        trace_array = (double*)calloc(data_length, sizeof(double));
+        double *U = copy_configuration(V);
+        measurement_list *data_list = create_measurement_list(16);
 
         for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
-            file_index = 0;
 
-            // src[3] = fact_T*(s%little_T);
-            // src[2] = fact_L*((s/little_T)%little_L);
-            // src[1] = fact_L*(((s/little_T)/little_L)%little_L);
-            // src[0] = fact_L*((((s/little_T)/little_L)/little_L)%little_L);
-
-            int src[4];
-            src[0] = fact_L*(s%little_L);
-            src[1] = fact_L*((s/little_L)%little_L);
-            src[2] = fact_L*(((s/little_L)/little_L)%little_L);
-            src[3] = fact_T*((((s/little_L)/little_L)/little_L)%little_T);
-
-            int lattice_s = src[0] + L*src[1] + LSQUARE*src[2] + LCUBE*src[3];
-
-            char tsubdir[200];
-            sprintf(tsubdir, "%s/%d", data_dir, src[3]);
-
-            char data_path[200];
-            // sprintf(data_path, "%s/run_r%s_%s_src%i-%i-%i-%i.bin", tsubdir, argv[2], config_number, src[0], src[1], src[2], src[3]);
-            sprintf(data_path, "%s/r%s_c%s_s%i.bin", tsubdir, argv[2], config_number, lattice_s);
-
-            // continue;
-
-            // struct stat buffer;
-            if (stat(data_path, &buffer) == 0) {
-                printf("%s already exists. Skipping.\n", data_path);
+            // map source index to lattice index
+            int lattice_s;
+            source_grid(&lattice_s, s, nSources);
+            // check if source has already been measured
+            if (in_source_list(lattice_s, existantSources, 
+                               existantSourceNumber) != 0) {
                 continue;
             }
 
-            // printf("On thread: %d\n", parallel_s);
-            // printf("On source: (%d, %d, %d, %d)\n", src[0], src[1], src[2], src[3]);
+            double trace_array[6];
 
-            int spos, srcp;
-            double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
-            // choose directions for loop
-            int mu_r = mu_z;
-            int mu_b = mu_x;
-            int step = ipow(L,mu_b);
-            int period = L*step; //only works if transverse direction is not time
-            int tdir, bdir;
+            // here is where the physics happens
+            compute_observables(trace_array, lattice_s, U, n, ratio, t, b);
 
-            for (int t = tmin; t < tmax+1; t++) {
-                for (int b = bmin; b < bmax+1; b++) {
-
-                    spos = src[0]+L*(src[1]+L*(src[2]+L*src[3]));
-                    srcp = X*spos;
-
-                    memset(prop_num, 0, sizeof(double)*OLENGTH);
-                    memcpy(&prop_num[srcp],source,sizeof(double)*X);
-
-                    // Numerator
-                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, ratio);
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=1);
-                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, ratio);
-                    // mem copy to RH denominator, because first half of loop is the same as numerator 
-                    memcpy(prop_den, prop_num, sizeof(double)*OLENGTH);
-                    // Finish numerator
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, -ratio);
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=-1);
-                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, -ratio);
-
-                    // trace(trnum, &prop_num[srcp]);
-                    trace(&trace_array[file_index], &prop_num[srcp]);
-                    // printf("Trace: (%.12e) + i(%.12e)\n", trnum[0], trnum[1]);
-
-                    // RH denominator
-
-                    // set correct bperp position
-                    bdir = 1;
-                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, ratio);
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
-                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, ratio);
-
-                    // trace(trdenA, &prop_den[srcp]);
-                    trace(&trace_array[file_index+2], &prop_den[srcp]);
-                    // printf("Trace: (%.12e) + i(%.12e)\n", trdenA[0], trdenA[1]);
-
-                    //LH denominator
-                    memset(prop_den, 0, sizeof(double)*OLENGTH);
-                    memcpy(&prop_den[srcp],source,sizeof(double)*X);
-
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-
-                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=1);
-                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
-                    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-                    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
-                    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-                    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
-
-                    // trace(trdenB, &prop_den[srcp]);
-                    trace(&trace_array[file_index+4], &prop_den[srcp]);
-                    // printf("Trace: (%.12e) + i(%.12e)\n", trdenB[0], trdenB[1]);
-
-                    // fprintf(data_file, "%d\t%d\t%d\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\t%.12e\n", 
-                    //         index++, t, b, trnum[0], trnum[1], trdenA[0], trdenA[1],
-                    //         trdenB[0], trdenB[1]);
-
-                    // increase file_index by the number of columns
-                    file_index += 6;
-
-                }
+            if(add_measurement_to_list(data_list, lattice_s, trace_array) != 0) {
+                printf("failed to add measurement to list!\n");
+                printf("this is probably due to memory exhaustion.\n");
+                exit(1);
             }
 
-            // write the file all at once so it doesn't just sit there open
-            FILE *data_file;
-            data_file = fopen(data_path, "wb");
-            fwrite(trace_array, sizeof(double), data_length, data_file);
-            fclose(data_file);
+            if (data_list->number_of_measurements > 20000) {
+                #pragma omp critical
+                write_data_to_file(data_list, argv);
+                delete_measurement_list(data_list);
+                data_list = create_measurement_list(16);
+            }
+
 
         }
-        free(U);
-        free(prop_num);
-        free(prop_den);
-        free(trace_array);
+        delete_measurement_list(data_list);
+        delete_configuration(U);
     }
 
-    free(V);
+    printf("free sizes\n");
     free(sizes);
-    // free(Om);
-    free(header);
+    printf("free existantSources\n");
+    free(existantSources);
+    delete_configuration(V);
 
     // clock_t end = clock();
     // double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
@@ -356,7 +186,8 @@ void fbdelta(double *result, double *layer, double *Ulayer, int lpos) {
     matmul(result, coefm, result);
 }
 
-void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, int tdir, double ratio) {
+void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, 
+                 int tdir, double ratio) {
 
     // this function is based on a result in arXiv:hep-lat/9205007
     //
@@ -478,7 +309,8 @@ void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, i
 }
 
 
-void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, int bsteps, int bdir) {
+void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, 
+                int bsteps, int bdir) {
 
     int step = ipow(L,mu);
     int period = L*step;
@@ -535,4 +367,329 @@ void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, int bsteps, 
     free(layer);
 }
 
+measurement_list *create_measurement_list(size_t block_size) {
+    measurement_list *list = malloc(sizeof(measurement_list));
+    if (list != NULL) {
+        list->number_of_measurements = 0;
+        list->size = block_size;
+        list->block_size = block_size;
+        list->indices = malloc(sizeof(uint32_t)*block_size);
+        list->measurements = malloc(sizeof(double*)*block_size);
+        if (list->indices == NULL || list->measurements == NULL) {
+            free(list);
+            return NULL;
+        }
+    }
+    return list;
+} 
+
+int add_measurement_to_list(measurement_list *list, int index, 
+                            double *measurement) {
+    size_t num_measurements = list->number_of_measurements;
+
+    if (num_measurements >= list->size) {
+        size_t new_size = list->size + list->block_size;
+        void *new_indices = realloc(list->indices, sizeof(uint32_t)*new_size);
+        void *new_measurements = 
+            realloc(list->measurements, sizeof(double*)*new_size);
+        if (new_indices == NULL || new_measurements == NULL) {
+            return 1;
+        } else {
+            list->size = new_size;
+            list->indices = (uint32_t*)new_indices;
+            list->measurements = (double**)new_measurements;
+        }
+    }
+
+    list->indices[num_measurements] = index;
+    list->measurements[num_measurements] = measurement;
+    ++list->number_of_measurements;
+
+    return 0;
+}
+
+void delete_measurement_list(measurement_list *list) {
+    free(list->indices);
+    free(list->measurements);
+    free(list);
+}
+
+void source_grid(int *pos, int source, int num_sources) {
+
+    const int little_L = (int)(ceil(pow((num_sources/2),0.25)));
+    /*const int little_L = pow((num_sources/2),0.25)+1;*/
+    const int little_T = 2*little_L;
+    const int fact_L = L/little_L;
+    const int fact_T = T/little_T;
+
+    int src[4];
+
+    src[0] = fact_L*(source%little_L);
+    src[1] = fact_L*((source/little_L)%little_L);
+    src[2] = fact_L*(((source/little_L)/little_L)%little_L);
+    src[3] = fact_T*((((source/little_L)/little_L)/little_L)%little_T);
+
+    *pos = src[3]*LCUBE + src[2]*LSQUARE + src[1]*L + src[0];
+}
+
+void compute_observables(double *trace_array, int spos, double *U, int n, 
+                         double ratio, int t, int b){
+
+    // propagators
+    double *prop_num;
+    prop_num = (double*)calloc(OLENGTH, sizeof(double));
+
+    double *prop_den;
+    prop_den = (double*)calloc(OLENGTH, sizeof(double));
+
+    int srcp = X*spos;
+    double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
+    // choose directions for loop
+    int mu_r = mu_z;
+    int mu_b = mu_x;
+    if (mu_b == mu_t) {
+        printf("Invalid direction. Exiting.\n");
+        exit(1);
+    }
+    int step = ipow(L,mu_b);
+    int period = L*step; //only works if transverse direction is not time
+    int tdir, bdir;
+
+    memset(prop_num, 0, sizeof(double)*OLENGTH);
+    memcpy(&prop_num[srcp],source,sizeof(double)*X);
+
+    // Numerator
+    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, ratio);
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=1);
+    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, ratio);
+    // mem copy to RH denominator, 
+    // because first half of loop is the same as numerator 
+    memcpy(prop_den, prop_num, sizeof(double)*OLENGTH);
+    // Finish numerator
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, -ratio);
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=-1);
+    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, -ratio);
+
+    // trace(trnum, &prop_num[srcp]);
+    trace(&trace_array[0], &prop_num[srcp]);
+    // printf("Trace: (%.12e) + i(%.12e)\n", trnum[0], trnum[1]);
+
+    // RH denominator
+
+    // set correct bperp position
+    bdir = 1;
+    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, ratio);
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
+    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, ratio);
+
+    // trace(trdenA, &prop_den[srcp]);
+    trace(&trace_array[2], &prop_den[srcp]);
+    // printf("Trace: (%.12e) + i(%.12e)\n", trdenA[0], trdenA[1]);
+
+    //LH denominator
+    memset(prop_den, 0, sizeof(double)*OLENGTH);
+    memcpy(&prop_den[srcp],source,sizeof(double)*X);
+
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+
+    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=1);
+    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=1, -ratio);
+    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
+    trLinksnew(prop_den, U, spos, mu_r, mu_b, b, bdir=-1);
+    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
+    tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
+
+    trace(&trace_array[4], &prop_den[srcp]);
+
+    free(prop_num);
+    free(prop_den);
+}
+
+double *read_configuration(char *config) {
+
+    double *V;
+    V = (double*)calloc(CLENGTH, sizeof(double));
+
+    char *header;
+    header = (char*)malloc(600*sizeof(char));
+    bzero(header, 600*sizeof(char));
+    int header_length = 0;
+
+    if (read_nersc(V, config, header, &header_length)!=0) {
+        printf("failed to read configuration!\n");
+        exit(1);
+    }
+
+    free(header);
+
+    return V;
+
+}
+
+void delete_configuration(double *V) {
+    free(V);
+}
+
+double *random_gauge_transform(double *V) {
+    // for gauge invariance check
+    
+    double *Om;
+    Om = (double*)calloc(CLENGTH, sizeof(double));
+    rnd_gauge_tr(Om);
+    transform(V, V, Om);
+    return Om;
+}
+
+double *copy_configuration(double *V) {
+    double *U;
+    U = (double*)calloc(CLENGTH, sizeof(double));
+    memcpy(U, V, sizeof(double)*CLENGTH);
+    return U;
+}
+
+int *setup_parallization(int *sizes_extent, int num_sources) {
+    // Set up partition of sources for parallelization
+    int num_threads = omp_get_max_threads();
+    int *sizes;
+    sizes = (int*)calloc(num_threads+1, sizeof(int));
+    sizes[0] = 0; // This is sacrosanct
+    if (num_sources < num_threads || num_threads == 1) {
+        *sizes_extent = 1;
+        sizes[1] = num_sources;
+    } else {
+        *sizes_extent = num_threads;
+
+        int high = num_sources/(*sizes_extent) + 1;
+        int low = num_sources/(*sizes_extent);
+        int num_high = num_sources%*sizes_extent;
+        for (int i = 0; i < num_high; i++) {
+            sizes[i+1] = sizes[i] + high;
+        }
+        for (int i = num_high; i < *sizes_extent; i++) {
+            sizes[i+1] = sizes[i] + low;
+        }
+    }
+    return sizes;
+}
+
+void create_info_file(char **inputs) {
+
+    // make an info file
+    char info_path[200];
+    sprintf(info_path, "%s/info_src%s", inputs[8], inputs[3]);
+
+    struct stat buffer;
+    if (stat(info_path, &buffer) != 0) {
+        FILE *info_file;
+        info_file = fopen(info_path, "w");
+
+        /*fprintf(info_file, header);*/
+        fprintf(info_file, "Layout: (uint32_t)(6*double)\n");
+        fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\t"
+                           "denA.imag\tdenB.real\tdenB.imag\n");
+        fprintf(info_file, "n=%s\n",inputs[1]);
+        fprintf(info_file, "r=%s\n",inputs[2]);
+        fprintf(info_file, "b=%s\n",inputs[4]);
+        fprintf(info_file, "t=%s\n",inputs[5]);
+        fprintf(info_file, "c=%s\n",inputs[6]);
+        /*fprintf(info_file, "index = b + ncols * t\n");*/
+
+        fclose(info_file);
+    }
+}
+
+void write_data_to_file(measurement_list *list, char **inputs) {
+
+    // code to write to file
+    char data_path[200];
+    sprintf(data_path, "%s/n%sr%sb%st%sc%s.bin", inputs[8], inputs[1], 
+            inputs[2], inputs[4], inputs[5], inputs[6]);
+
+    FILE *data_file;
+    data_file = fopen(data_path, "ab");
+    for (int i = 0; i < list->number_of_measurements; i++) {
+        fwrite(&list->indices[i], sizeof(uint32_t), 1, data_file);
+        fwrite(list->measurements[i], sizeof(double), 6, data_file);
+    }
+    fclose(data_file);
+
+}
+
+measurement_list *read_data_from_file(char **inputs) {
+
+    measurement_list *list = create_measurement_list(16);
+    // code to write to file
+    char data_path[200];
+    sprintf(data_path, "%s/n%sr%sb%st%sc%s.bin", inputs[8], inputs[1], 
+            inputs[2], inputs[4], inputs[5], inputs[6]);
+
+    FILE *data_file = fopen(data_path, "rb");
+    if (data_file != NULL) {
+        size_t num_read;
+        for (int i=0; i<LVOLUME; i++) {
+            num_read = 0;
+            uint32_t index;
+            double measurement[6];
+            num_read += fread(&index, sizeof(uint32_t), 1, data_file);
+            num_read += fread(measurement, sizeof(double), 6, data_file);
+            if (num_read == 7) {
+                add_measurement_to_list(list, index, measurement);
+            } else {
+                break;
+            }
+        }
+
+        fclose(data_file);
+    }
+    return list;
+}
+
+uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs) {
+
+    measurement_list *list = read_data_from_file(inputs);
+    uint32_t *existant_sources = 
+        malloc(sizeof(*existant_sources) * list->number_of_measurements);
+    printf("l->n %"PRIu32"\n", list->number_of_measurements);
+    /*if (existant_sources == NULL) {*/
+    /*    return 0;*/
+    /*}*/
+    printf("l->i %u\n", list->indices[1]);
+
+    // don't copy pointer, copy actual memory
+    // we want a new location
+    for (int i = 0; i < list->number_of_measurements; i++) {
+        existant_sources[i] = list->indices[i];
+    }
+    printf("e_s %u\n", existant_sources[1]);
+    *number_of_sources = list->number_of_measurements;
+    delete_measurement_list(list);
+
+    return existant_sources;
+}
+
+int in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
+
+    for (size_t i = 0; i < size; i++) {
+        if (source == source_list[i]) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
 
