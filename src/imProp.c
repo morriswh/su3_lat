@@ -88,9 +88,6 @@ int main(int argc, char *argv[]) {
     size_t existantSourceNumber; 
     uint32_t *existantSources = 
         get_existing_sources(&existantSourceNumber, argv);
-    printf("eS %u\n", existantSources[1]);
-
-    printf("Existing sources: %u\n", existantSourceNumber);
 
     // setup parallelization
     int sizes_extent;
@@ -99,6 +96,8 @@ int main(int argc, char *argv[]) {
     #pragma omp parallel for
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
+        // faster to copy the configuration for each thread, but obviously
+        // uses a lot more memory
         double *U = copy_configuration(V);
         measurement_list *data_list = create_measurement_list(16);
 
@@ -118,28 +117,29 @@ int main(int argc, char *argv[]) {
             // here is where the physics happens
             compute_observables(trace_array, lattice_s, U, n, ratio, t, b);
 
-            if(add_measurement_to_list(data_list, lattice_s, trace_array) != 0) {
+            if(add_measurement_to_list(data_list, 
+                                       lattice_s, trace_array) != 0) {
                 printf("failed to add measurement to list!\n");
                 printf("this is probably due to memory exhaustion.\n");
                 exit(1);
             }
 
-            if (data_list->number_of_measurements > 20000) {
+            if (data_list->number_of_measurements > (size_t)20000) {
+                printf("HERE\n");
                 #pragma omp critical
                 write_data_to_file(data_list, argv);
                 delete_measurement_list(data_list);
                 data_list = create_measurement_list(16);
             }
-
-
         }
+
+        #pragma omp critical
+        write_data_to_file(data_list, argv);
         delete_measurement_list(data_list);
         delete_configuration(U);
     }
 
-    printf("free sizes\n");
     free(sizes);
-    printf("free existantSources\n");
     free(existantSources);
     delete_configuration(V);
 
@@ -240,7 +240,6 @@ void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps,
         // (1-H0/2)^n |_tprev
         tn = n;
         while (tn--) {
-            // printf("tn=%d\n", tn);
             for (j = 0; j < L; j++) { // scan across (x,y,z) direction
                 fbdelta(fbder, layer, Ulayer, j); // fwd-bwd derivative
                 matmul(update,coefm,fbder);
@@ -316,8 +315,8 @@ void trLinksnew(double *prop, double *U, int spos, int mu, int bmu,
     int period = L*step;
     int rpos = mod(spos/step, L);
     int bstep = ipow(L,bmu);
-    int bperiod = L*bstep; // this will not work if we want the time direction to
-                          // be our bdir but why would we want that?
+    int bperiod = L*bstep; // this will not work if we want the time direction
+                          // to be our bdir but why would we want that?
 
     // pull the WL direction back to the edge so
     // we don't have to worry about boundaries
@@ -373,8 +372,8 @@ measurement_list *create_measurement_list(size_t block_size) {
         list->number_of_measurements = 0;
         list->size = block_size;
         list->block_size = block_size;
-        list->indices = malloc(sizeof(uint32_t)*block_size);
-        list->measurements = malloc(sizeof(double*)*block_size);
+        list->indices = (uint32_t*)malloc(sizeof(uint32_t*)*block_size);
+        list->measurements = (double**)malloc(sizeof(double**)*block_size);
         if (list->indices == NULL || list->measurements == NULL) {
             free(list);
             return NULL;
@@ -386,6 +385,8 @@ measurement_list *create_measurement_list(size_t block_size) {
 int add_measurement_to_list(measurement_list *list, int index, 
                             double *measurement) {
     size_t num_measurements = list->number_of_measurements;
+    /*double mm[6];*/
+    /*memcpy(mm, measurement, 6*sizeof(double));*/
 
     if (num_measurements >= list->size) {
         size_t new_size = list->size + list->block_size;
@@ -402,7 +403,9 @@ int add_measurement_to_list(measurement_list *list, int index,
     }
 
     list->indices[num_measurements] = index;
-    list->measurements[num_measurements] = measurement;
+    /*list->measurements[num_measurements] = mm;*/
+    list->measurements[num_measurements] = malloc(6*sizeof(double));
+    memcpy(list->measurements[num_measurements],measurement,6*sizeof(double));
     ++list->number_of_measurements;
 
     return 0;
@@ -645,8 +648,10 @@ measurement_list *read_data_from_file(char **inputs) {
             num_read = 0;
             uint32_t index;
             double measurement[6];
+            /*double mm[6];*/
             num_read += fread(&index, sizeof(uint32_t), 1, data_file);
             num_read += fread(measurement, sizeof(double), 6, data_file);
+            /*memcpy(mm, measurement, 6*sizeof(double));*/
             if (num_read == 7) {
                 add_measurement_to_list(list, index, measurement);
             } else {
@@ -664,18 +669,15 @@ uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs) {
     measurement_list *list = read_data_from_file(inputs);
     uint32_t *existant_sources = 
         malloc(sizeof(*existant_sources) * list->number_of_measurements);
-    printf("l->n %"PRIu32"\n", list->number_of_measurements);
     /*if (existant_sources == NULL) {*/
     /*    return 0;*/
     /*}*/
-    printf("l->i %u\n", list->indices[1]);
 
     // don't copy pointer, copy actual memory
     // we want a new location
     for (int i = 0; i < list->number_of_measurements; i++) {
         existant_sources[i] = list->indices[i];
     }
-    printf("e_s %u\n", existant_sources[1]);
     *number_of_sources = list->number_of_measurements;
     delete_measurement_list(list);
 
