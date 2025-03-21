@@ -1,4 +1,4 @@
-file=imProp
+file=source_avg
 
 all: build
 
