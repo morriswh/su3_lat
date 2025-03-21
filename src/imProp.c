@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     int sizes_extent;
     int *sizes = setup_parallization(&sizes_extent, nSources);
 
-    #pragma omp parallel for
+    /*#pragma omp parallel for*/
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
         // faster to copy the configuration for each thread, but obviously
@@ -125,19 +125,19 @@ int main(int argc, char *argv[]) {
             }
 
             if (data_list->number_of_measurements > (size_t)20000) {
-                printf("HERE\n");
-                #pragma omp critical
+                /*#pragma omp critical*/
                 write_data_to_file(data_list, argv);
                 delete_measurement_list(data_list);
                 data_list = create_measurement_list(16);
             }
         }
 
-        #pragma omp critical
+        /*#pragma omp critical*/
         write_data_to_file(data_list, argv);
         delete_measurement_list(data_list);
         delete_configuration(U);
     }
+    /*#pragma omp barrier*/
 
     free(sizes);
     free(existantSources);
@@ -412,6 +412,9 @@ int add_measurement_to_list(measurement_list *list, int index,
 }
 
 void delete_measurement_list(measurement_list *list) {
+    for (size_t i = 0; i < list->number_of_measurements; i++) {
+        free(list->measurements[i]);
+    }
     free(list->indices);
     free(list->measurements);
     free(list);
