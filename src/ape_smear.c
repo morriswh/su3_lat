@@ -10,6 +10,7 @@
 #include <math.h>
 #include <time.h>
 #include "sizes.h"
+#include "fileIO.h"
 #include "su3lib.h"
 #include "apelib.h"
 
@@ -104,7 +105,7 @@ int main(int argc, char *argv[]) {
 
     char read_cksm[20];
     char label[] = "CHECKSUM\0";
-    find_value(read_cksm, label, 8, header, header_length);
+    find_nersc_value(read_cksm, label, 8, header, header_length);
     printf("Read checksum from header = %s\n", read_cksm);
     uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
 
@@ -164,7 +165,7 @@ int main(int argc, char *argv[]) {
             snprintf(label, 30*sizeof(char), "T%dL%d_ape_a%s_dir%d%d%d%d", 
                      T, L, alpha_str, 
                      smear_dir[0], smear_dir[1], smear_dir[2], smear_dir[3]);
-            make_header(header, &header_length, V, label);
+            make_nersc_header(header, &header_length, V, label);
             sprintf(out_file, "%s/T64L32_E5_ape%d_a%s_NERSC.%s", 
                     out_dir, j+1, alpha_str, config_number);
             write_nersc(V, out_file, header, header_length);
