@@ -1,4 +1,4 @@
-file=zigzag
+file=zz_source_avg
 
 all: build
 

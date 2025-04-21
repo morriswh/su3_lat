@@ -164,7 +164,6 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
 
 void write_data_to_tsv_file(double *data, char **inputs) {
 
-
     // code to write to file
     char data_path[200];
     sprintf(data_path, "%s/n%ss%sc%s.tsv", 
