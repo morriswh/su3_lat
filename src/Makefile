@@ -1,4 +1,4 @@
-file=zigzag2
+file=zigzag
 
 all: build
 
