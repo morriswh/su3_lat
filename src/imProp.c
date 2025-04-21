@@ -14,6 +14,7 @@
 #include <time.h>
 #include "sizes.h"
 #include "su3lib.h"
+#include "fileIO.h"
 
 #define LENGTH(X) (sizeof X / sizeof X[0])
 
@@ -93,7 +94,7 @@ int main(int argc, char *argv[]) {
     int sizes_extent;
     int *sizes = setup_parallization(&sizes_extent, nSources);
 
-    /*#pragma omp parallel for*/
+    #pragma omp parallel for
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
         // faster to copy the configuration for each thread, but obviously
@@ -125,19 +126,19 @@ int main(int argc, char *argv[]) {
             }
 
             if (data_list->number_of_measurements > (size_t)20000) {
-                /*#pragma omp critical*/
+                #pragma omp critical
                 write_data_to_file(data_list, argv);
                 delete_measurement_list(data_list);
                 data_list = create_measurement_list(16);
             }
         }
 
-        /*#pragma omp critical*/
+        #pragma omp critical
         write_data_to_file(data_list, argv);
         delete_measurement_list(data_list);
         delete_configuration(U);
     }
-    /*#pragma omp barrier*/
+    #pragma omp barrier
 
     free(sizes);
     free(existantSources);

@@ -1,4 +1,4 @@
-file=ape_smear
+file=zigzag2
 
 all: build
 

@@ -19,19 +19,10 @@ enum dim{mu_x, mu_y, mu_z, mu_t};
 // declarations
 void segment(double *loop, double *U, int *pos, int mu, int comp);
 void diagonal_segment(double *loop, double *U, int *pos, 
-                      int mu_i, int mu_j, int icomp, int jcomp,
-                      int path_index);
+                      int mu_i, int mu_j, int icomp, int jcomp);
 int compare(int x, int y, int xsteps, int ysteps); // for "smart" pathing
 void source_grid(int *pos, int source, int num_sources); // commenting this doesn't give an implicit declaration error. why?
 void stoia(int *output, char *input);
-
-const int paths[][7] = {
-    {0, 0, 0, 1, 1, 1, 1},
-    {1, 1, 1, 1, 0, 0, 0},
-    {1, 0, 1, 0, 1, 0, 1},
-    {1, 1, 0, 0, 1, 1, 0},
-    {0, 1, 1, 0, 0, 1, 1}
-};
 
 int main(int argc, char *argv[]) {
 
@@ -45,11 +36,9 @@ int main(int argc, char *argv[]) {
     char *config = argv[2];
     char *data_dir = argv[3];
     int nSources = atoi(argv[4]); // max sources: 2097152
-    int bmm[2];
-    stoia(bmm, argv[5]);
+    int b = atoi(argv[5])
     int shape[4];
     stoia(shape, argv[6]);
-    int onrails = atoi(argv[7]);
 
 
     char *header;
@@ -79,46 +68,33 @@ int main(int argc, char *argv[]) {
 
     clock_t begin = clock();
 
-    int num_paths = 5;
-    if (onrails == 1) {
-        num_paths = 1;
-    }
-
     // #pragma omp parallel for
-    for( int bi = bmm[0]; bi < bmm[1]; bi++) {
-        for (int pi = 0; pi < num_paths; pi++) {
-            for (int s = 0; s < nSources; s++) {
-                printf("What\n");
+    for (int s = 0; s < nSources; s++) {
+        // butterfly loop with one wing along z and one wing along y direction
+        // declare and then initialize
+        double loop[X];
+        memset(loop, 0, sizeof(loop));
+        loop[0] = 1;  
+        loop[8] = 1;  
+        loop[16] = 1;
 
-                // butterfly loop with one wing along z and one wing along y direction
-                // declare and then initialize
-                double loop[X];
-                memset(loop, 0, sizeof(loop));
-                loop[0] = 1;  
-                loop[8] = 1;  
-                loop[16] = 1;
+        int pos;
+        source_grid(&pos, s, nSources);
 
-                int pos;
-                source_grid(&pos, s, nSources);
+        diagonal_segment(loop, U, &pos, 1, 2, shape[0], shape[1]);
+        segment(loop, U, &pos, 0, bi);
+        diagonal_segment(loop, U, &pos, 1, 2, -shape[0], -shape[1]);
+        diagonal_segment(loop, U, &pos, 1, 2, shape[2], shape[3]);
+        segment(loop, U, &pos, 0, -bi);
+        diagonal_segment(loop, U, &pos, 1, 2, -shape[2], -shape[3]);
 
-                // argument 'pi' is meangingless if we only move along grid directions
-                diagonal_segment(loop, U, &pos, 1, 2, shape[0], shape[1], pi);
-                segment(loop, U, &pos, 0, bi);
-                diagonal_segment(loop, U, &pos, 1, 2, -shape[0], -shape[1], pi);
-                diagonal_segment(loop, U, &pos, 1, 2, shape[2], shape[3], pi);
-                segment(loop, U, &pos, 0, -bi);
-                diagonal_segment(loop, U, &pos, 1, 2, -shape[2], -shape[3], pi);
+        double loop_trace;
+        trace(&loop_trace, loop);
 
-                double loop_trace;
-                trace(&loop_trace, loop);
-
-                FILE *data_file;
-                data_file = fopen(data_path, "ab+");
-                fwrite(&loop_trace, sizeof(double), 1, data_file);
-                fclose(data_file);
-
-            }
-        }
+        FILE *data_file;
+        data_file = fopen(data_path, "ab+");
+        fwrite(&loop_trace, sizeof(double), 1, data_file);
+        fclose(data_file);
     }
 
     free(U);
@@ -172,8 +148,7 @@ void segment(double *loop, double *U, int *pos, int mu, int comp) {
 }
 
 void diagonal_segment(double *loop, double *U, int *pos, 
-                      int mu_i, int mu_j, int icomp, int jcomp,
-                      int path_index) {
+                      int mu_i, int mu_j, int icomp, int jcomp) {
 
     // if it's just a straight line, call segment instead to avoid div0
     if (icomp == 0) {
@@ -215,8 +190,7 @@ void diagonal_segment(double *loop, double *U, int *pos,
         // choose values based on result of compare function
         // want to get best approximation of diagonal line
         // need to see if there's a better
-        // int result = compare(i, j, isteps, jsteps);
-        int result = paths[path_index][k];
+        int result = compare(i, j, isteps, jsteps);
         int mu, step, period, dir;
         if (result == 1) { // mu_j direction
             mu = mu_j;
