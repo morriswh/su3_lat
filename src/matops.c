@@ -3,7 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <omp.h>
-#include <lapack.h>
+#include <openblas64/lapack.h>
 // #include <lapacke.h>
 #include "sizes.h"
 #include "matops.h"

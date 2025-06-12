@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
         // faster to copy the configuration for each thread, but obviously
         // uses a lot more memory
         double *U = copy_configuration(V);
-        measurement_list *data_list = create_measurement_list(16);
+        measurement_list *data_list = create_measurement_list(nSources/sizes_extent+1);
 
         for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
 
