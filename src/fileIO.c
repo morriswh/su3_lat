@@ -124,7 +124,7 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
     };
 
     // Now make the header
-    char *new_header = malloc(sizeof(char)*1000);
+    char new_header[1000];
     // char line[100];
     int old_index = 0, new_index = 0;
     // char line_end[] = "END_HEADER\n";
@@ -167,7 +167,6 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
     // // bzero(header, sizeof(char)*(*header_length));
     *header_length = new_index;
     memcpy(header, new_header, sizeof(char)*(*header_length+1));
-    free(new_header);
 }
 
 void find_nersc_value(char *value, char *label, int label_length, char *header, int header_length) {
