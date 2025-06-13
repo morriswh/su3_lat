@@ -47,7 +47,8 @@ int add_measurement_to_list(measurement_list *list, int index,
 void delete_measurement_list(measurement_list *list);
 void source_grid(int *pos, int source, int num_sources);
 void compute_observables(double *trace_array, int spos, double *U, int n, 
-                         double ratio, int t, int b);
+                         double ratio, int t, int b,
+                         double *prop_num, double *prop_den);
 double *read_configuration(char *config);
 void delete_configuration(double *V);
 double *random_gauge_transform(double *V);
@@ -97,10 +98,14 @@ int main(int argc, char *argv[]) {
     #pragma omp parallel for
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
-        // faster to copy the configuration for each thread, but obviously
-        // uses a lot more memory
-        double *U = copy_configuration(V);
+        // can't remember why i was making copies, but it doesn't seem to help
+        // and uses a lot more memory
+        // double *U = copy_configuration(V);
         measurement_list *data_list = create_measurement_list(nSources/sizes_extent+1);
+
+        // propagators
+        double *prop_num = (double*)calloc(OLENGTH, sizeof(double));
+        double *prop_den = (double*)calloc(OLENGTH, sizeof(double));
 
         for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
 
@@ -116,7 +121,8 @@ int main(int argc, char *argv[]) {
             double trace_array[6];
 
             // here is where the physics happens
-            compute_observables(trace_array, lattice_s, U, n, ratio, t, b);
+            compute_observables(trace_array, lattice_s, V, n, ratio, t, b, 
+                                prop_num, prop_den);
 
             if(add_measurement_to_list(data_list, 
                                        lattice_s, trace_array) != 0) {
@@ -133,10 +139,13 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        free(prop_num);
+        free(prop_den);
+
         #pragma omp critical
         write_data_to_file(data_list, argv);
         delete_measurement_list(data_list);
-        delete_configuration(U);
+        // delete_configuration(U);
     }
     #pragma omp barrier
 
@@ -202,10 +211,14 @@ void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps,
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
     // allocate memory for layer and helper array
-    double *layer, *helper, *Ulayer;
-    layer = (double*)calloc(L*X, sizeof(double));
-    helper = (double*)calloc(L*X, sizeof(double));
-    Ulayer = (double*)calloc(L*X, sizeof(double));
+    // double *layer, *helper, *Ulayer;
+    // layer = (double*)cal  loc(L*X, sizeof(double));
+    // helper = (double*)cal  loc(L*X, sizeof(double));
+    // Ulayer = (double*)cal  loc(L*X, sizeof(double));
+
+    double layer[L*X];
+    double helper[L*X];
+    double Ulayer[L*X];
 
     // fill Ulayer for first use
     int l;
@@ -303,9 +316,9 @@ void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps,
         }
     }
 
-    free(layer);
-    free(helper);
-    free(Ulayer);
+    // free(layer);
+    // free(helper);
+    // free(Ulayer);
 }
 
 
@@ -323,8 +336,10 @@ void trLinksnew(double *prop, double *U, int spos, int mu, int bmu,
     // we don't have to worry about boundaries
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
-    double *layer; // chocolate cake
-    layer = (double*)calloc(L*X, sizeof(double));
+    // double *layer; // chocolate cake
+    // layer = (double*)calloc(L*X, sizeof(double));
+
+    double layer[L*X]; // chocolate cake
 
     double Ub[X];
 
@@ -364,7 +379,7 @@ void trLinksnew(double *prop, double *U, int spos, int mu, int bmu,
         }
     }
 
-    free(layer);
+    // free(layer);
 }
 
 measurement_list *create_measurement_list(size_t block_size) {
@@ -440,14 +455,8 @@ void source_grid(int *pos, int source, int num_sources) {
 }
 
 void compute_observables(double *trace_array, int spos, double *U, int n, 
-                         double ratio, int t, int b){
-
-    // propagators
-    double *prop_num;
-    prop_num = (double*)calloc(OLENGTH, sizeof(double));
-
-    double *prop_den;
-    prop_den = (double*)calloc(OLENGTH, sizeof(double));
+                         double ratio, int t, int b, 
+                         double *prop_num, double *prop_den){
 
     int srcp = X*spos;
     double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
@@ -522,9 +531,6 @@ void compute_observables(double *trace_array, int spos, double *U, int n,
     tpropLMNnew(prop_den, U, n, spos, mu_r, t, tdir=-1, -ratio);
 
     trace(&trace_array[4], &prop_den[srcp]);
-
-    free(prop_num);
-    free(prop_den);
 }
 
 double *read_configuration(char *config) {
@@ -532,8 +538,7 @@ double *read_configuration(char *config) {
     double *V;
     V = (double*)calloc(CLENGTH, sizeof(double));
 
-    char *header;
-    header = (char*)malloc(600*sizeof(char));
+    char header[1000];
     bzero(header, 600*sizeof(char));
     int header_length = 0;
 
@@ -542,10 +547,7 @@ double *read_configuration(char *config) {
         exit(1);
     }
 
-    free(header);
-
     return V;
-
 }
 
 void delete_configuration(double *V) {
