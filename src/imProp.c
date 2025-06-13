@@ -98,9 +98,9 @@ int main(int argc, char *argv[]) {
     #pragma omp parallel for
     for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
-        // faster to copy the configuration for each thread, but obviously
-        // uses a lot more memory
-        double *U = copy_configuration(V);
+        // can't remember why i was making copies, but it doesn't seem to help
+        // and uses a lot more memory
+        // double *U = copy_configuration(V);
         measurement_list *data_list = create_measurement_list(nSources/sizes_extent+1);
 
         // propagators
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
             double trace_array[6];
 
             // here is where the physics happens
-            compute_observables(trace_array, lattice_s, U, n, ratio, t, b, 
+            compute_observables(trace_array, lattice_s, V, n, ratio, t, b, 
                                 prop_num, prop_den);
 
             if(add_measurement_to_list(data_list, 
@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
         #pragma omp critical
         write_data_to_file(data_list, argv);
         delete_measurement_list(data_list);
-        delete_configuration(U);
+        // delete_configuration(U);
     }
     #pragma omp barrier
 
