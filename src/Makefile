@@ -1,4 +1,4 @@
-file=imPropNum
+file=imProp
 # file=source_avg_num
 
 all: build

@@ -59,6 +59,7 @@ void write_data_to_file(measurement_list *list, char **inputs);
 measurement_list *read_data_from_file(char **inputs);
 uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs);
 int in_source_list(uint32_t source, uint32_t *source_list, size_t size);
+int ssl2sa(char *s, char **a); // space-separated list to string array
 
 // void build_string(char *out, char *in[], int length);
 
@@ -66,95 +67,143 @@ int main(int argc, char *argv[]) {
 
     if (argc < 9 || argc > 9) {
         printf("Input should look like: \n");
-        printf("%s n ratio num_sources b t config_number"
+        printf("%s <n> <ratio list> num_sources <b list> <t list> config_number"
                " config_path data_dir\n", argv[0]);
         exit(1);
     }
 
+    // clock_t begin = clock();
+    double begin = omp_get_wtime();
+
     int n = atoi(argv[1]);
-    double ratio = atof(argv[2]);
+
+    int rSize = ssl2sa(argv[2], NULL);
+    char **ratioList = malloc(rSize*sizeof(char*));
+    ssl2sa(argv[2], ratioList);
+
     int nSources = atoi(argv[3]);
-    int b = atoi(argv[4]);
-    int t = atoi(argv[5]);
+
+    int bSize = ssl2sa(argv[4], NULL);
+    char **bList = malloc(bSize*sizeof(char*));
+    ssl2sa(argv[4], bList);
+
+    int tSize = ssl2sa(argv[5], NULL);
+    char **tList = malloc(tSize*sizeof(char*));
+    ssl2sa(argv[5], tList);
+
     char *config_number = argv[6];
     char *config = argv[7];
     char *data_dir = argv[8];
 
-    // clock_t begin = clock();
-    double begin = omp_get_wtime();
-
     double *V = read_configuration(config);
 
-    create_info_file(argv); // if it doesn't already exist
 
-    size_t existantSourceNumber; 
-    uint32_t *existantSources = 
-        get_existing_sources(&existantSourceNumber, argv);
+    // change triple for-loop to single loop later
+    for (int i = 0; i < rSize; i++) {
+    for (int j = 0; j < bSize; j++) {
+    for (int k = 0; k < tSize; k++) {
 
-    // setup parallelization
-    int sizes_extent;
-    int *sizes = setup_parallization(&sizes_extent, nSources);
+        char *ratioStr = ratioList[i];
+        char *bStr = bList[j];
+        char *tStr = tList[k];
+        char *inargs[] = { argv[0], argv[1], ratioStr, argv[3], bStr, tStr, 
+                            argv[6], argv[7], argv[8] };
+        
+        double ratio = atof(ratioStr);
+        int b = atoll(bStr);
+        int t = atoll(tStr);
+        printf("Calculating for %lf, %d, %d\n", ratio, b, t);
 
-    #pragma omp parallel for
-    for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
+        printf("here1\n");
+        create_info_file(inargs); // if it doesn't already exist
+        printf("here2\n");
 
-        // can't remember why i was making copies, but it doesn't seem to help
-        // and uses a lot more memory
-        // double *U = copy_configuration(V);
-        measurement_list *data_list = create_measurement_list(nSources/sizes_extent+1);
+        size_t existantSourceNumber; 
+        uint32_t *existantSources = 
+            get_existing_sources(&existantSourceNumber, inargs);
 
-        // propagators
-        double *prop_num = (double*)calloc(OLENGTH, sizeof(double));
-        double *prop_den = (double*)calloc(OLENGTH, sizeof(double));
+        // setup parallelization // move this outside loops, global variable
+        int sizes_extent;
+        int *sizes = setup_parallization(&sizes_extent, nSources);
 
-        for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
+        #pragma omp parallel for
+        for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
-            // map source index to lattice index
-            int lattice_s;
-            source_grid(&lattice_s, s, nSources);
-            // check if source has already been measured
-            if (in_source_list(lattice_s, existantSources, 
-                               existantSourceNumber) != 0) {
-                continue;
+            // can't remember why i was making copies, but it doesn't seem to help
+            // and uses a lot more memory
+            // double *U = copy_configuration(V);
+            measurement_list *data_list = 
+                create_measurement_list(nSources/sizes_extent+1);
+
+            // propagators
+            double *prop_num = (double*)calloc(OLENGTH, sizeof(double));
+            double *prop_den = (double*)calloc(OLENGTH, sizeof(double));
+
+            for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
+
+                // map source index to lattice index
+                int lattice_s;
+                source_grid(&lattice_s, s, nSources);
+                // check if source has already been measured
+                if (in_source_list(lattice_s, existantSources, 
+                                   existantSourceNumber) != 0) {
+                    continue;
+                }
+
+                double trace_array[NUM_DATAS];
+
+                // here is where the physics happens
+                compute_observables(trace_array, lattice_s, V, n, ratio, t, b, 
+                                    prop_num, prop_den);
+
+                if(add_measurement_to_list(data_list, 
+                                           lattice_s, trace_array) != 0) {
+                    printf("failed to add measurement to list!\n");
+                    printf("this is probably due to memory exhaustion.\n");
+                    exit(1);
+                }
+
+                if (data_list->number_of_measurements > (size_t)20000) {
+                    #pragma omp critical
+                    write_data_to_file(data_list, inargs);
+                    delete_measurement_list(data_list);
+                    data_list = create_measurement_list(16);
+                }
             }
 
-            double trace_array[6];
+            free(prop_num);
+            free(prop_den);
 
-            // here is where the physics happens
-            compute_observables(trace_array, lattice_s, V, n, ratio, t, b, 
-                                prop_num, prop_den);
-
-            if(add_measurement_to_list(data_list, 
-                                       lattice_s, trace_array) != 0) {
-                printf("failed to add measurement to list!\n");
-                printf("this is probably due to memory exhaustion.\n");
-                exit(1);
-            }
-
-            if (data_list->number_of_measurements > (size_t)20000) {
-                #pragma omp critical
-                write_data_to_file(data_list, argv);
-                delete_measurement_list(data_list);
-                data_list = create_measurement_list(16);
-            }
+            #pragma omp critical
+            write_data_to_file(data_list, inargs);
+            delete_measurement_list(data_list);
+            // delete_configuration(U);
         }
+        #pragma omp barrier
 
-        free(prop_num);
-        free(prop_den);
+        free(sizes);
+        free(existantSources);
 
-        #pragma omp critical
-        write_data_to_file(data_list, argv);
-        delete_measurement_list(data_list);
-        // delete_configuration(U);
-    }
-    #pragma omp barrier
+    } // triple
+    } // for
+    } // loop
 
-    free(sizes);
-    free(existantSources);
     delete_configuration(V);
 
-    // clock_t end = clock();
-    // double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    // Clean this up
+    for (int i = 0; i < rSize; i++) {
+        free(ratioList[i]);
+    }
+    for (int j = 0; j < bSize; j++) {
+        free(bList[j]);
+    }
+    for (int k = 0; k < tSize; k++) {
+        free(tList[k]);
+    }
+    free(ratioList);
+    free(bList);
+    free(tList);
+
     double end = omp_get_wtime();
     double time_spent = end - begin;
     printf("Elapsed time: %lfs\n", time_spent);
@@ -597,7 +646,6 @@ int *setup_parallization(int *sizes_extent, int num_sources) {
 }
 
 void create_info_file(char **inputs) {
-
     // make an info file
     char info_path[200];
     sprintf(info_path, "%s/info_src%s", inputs[8], inputs[3]);
@@ -623,7 +671,6 @@ void create_info_file(char **inputs) {
 }
 
 void write_data_to_file(measurement_list *list, char **inputs) {
-
     // code to write to file
     char data_path[200];
     sprintf(data_path, "%s/n%sr%sb%st%sc%s.bin", inputs[8], inputs[1], 
@@ -640,7 +687,6 @@ void write_data_to_file(measurement_list *list, char **inputs) {
 }
 
 measurement_list *read_data_from_file(char **inputs) {
-
     measurement_list *list = create_measurement_list(16);
     // code to write to file
     char data_path[200];
@@ -671,7 +717,6 @@ measurement_list *read_data_from_file(char **inputs) {
 }
 
 uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs) {
-
     measurement_list *list = read_data_from_file(inputs);
     uint32_t *existant_sources = 
         malloc(sizeof(*existant_sources) * list->number_of_measurements);
@@ -691,7 +736,6 @@ uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs) {
 }
 
 int in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
-
     for (size_t i = 0; i < size; i++) {
         if (source == source_list[i]) {
             return 1;
@@ -701,3 +745,29 @@ int in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
     return 0;
 }
 
+int ssl2sa(char *s, char **a) {
+    int c = 0;
+    if (a == NULL) {
+        int i = 0;
+        while (s[i] != '\0') {
+            if (s[i] == ' ') {
+                c++;
+            }
+            i++;
+        }
+    }
+    else {
+        int i = 0;
+        int ri = 0;
+        while (s[i] != '\0') {
+            if (s[i] == ' ') {
+                *(a+c) = calloc(i-ri+1, sizeof(char));
+                strncpy(*(a+c), s+ri, i-ri);
+                ri = i + 1;
+                c++;
+            }
+            i++;
+        }
+    }
+    return c;
+}

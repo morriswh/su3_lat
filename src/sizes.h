@@ -17,5 +17,6 @@ extern const int LLENGTH;
 extern const int LVOLUME;
 extern const int LCUBE;
 extern const int LSQUARE;
+extern const int NUM_DATAS;
 
 #endif // !SIZES_H

@@ -16,5 +16,6 @@ const int LLENGTH   = T*L*L*L*D;     //= 8388608;   //
 const int LVOLUME   = T*L*L*L;       //= 2097152;   // 
 const int LCUBE     = L*L*L;         //= 32768;     // 
 const int LSQUARE   = L*L;           //= 1024;      // 
+const int NUM_DATAS = 6;
 
 
