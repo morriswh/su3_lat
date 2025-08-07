@@ -23,7 +23,7 @@ enum dim{mu_x, mu_y, mu_z, mu_t};
 // Creating the structure
 typedef struct {
     uint32_t *indices; // store lattice index for unordered file write
-    double **measurements; // array of measurements, probably 6 doubles
+    double **measurements; // array of measurements, NUM_DATAS doubles
     size_t number_of_measurements;
     size_t size;
     size_t block_size;
@@ -450,8 +450,8 @@ measurement_list *create_measurement_list(size_t block_size) {
 int add_measurement_to_list(measurement_list *list, int index, 
                             double *measurement) {
     size_t num_measurements = list->number_of_measurements;
-    /*double mm[6];*/
-    /*memcpy(mm, measurement, 6*sizeof(double));*/
+    /*double mm[NUM_DATAS];*/
+    /*memcpy(mm, measurement, NUM_DATAS*sizeof(double));*/
 
     if (num_measurements >= list->size) {
         size_t new_size = list->size + list->block_size;
@@ -469,8 +469,8 @@ int add_measurement_to_list(measurement_list *list, int index,
 
     list->indices[num_measurements] = index;
     /*list->measurements[num_measurements] = mm;*/
-    list->measurements[num_measurements] = malloc(6*sizeof(double));
-    memcpy(list->measurements[num_measurements],measurement,6*sizeof(double));
+    list->measurements[num_measurements] = malloc(NUM_DATAS*sizeof(double));
+    memcpy(list->measurements[num_measurements],measurement,NUM_DATAS*sizeof(double));
     ++list->number_of_measurements;
 
     return 0;
@@ -656,7 +656,7 @@ void create_info_file(char **inputs) {
         info_file = fopen(info_path, "w");
 
         /*fprintf(info_file, header);*/
-        fprintf(info_file, "Layout: (uint32_t)(6*double)\n");
+        fprintf(info_file, "Layout: (uint32_t)(NUM_DATAS*double)\n");
         fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\t"
                            "denA.imag\tdenB.real\tdenB.imag\n");
         fprintf(info_file, "n=%s\n",inputs[1]);
@@ -680,7 +680,7 @@ void write_data_to_file(measurement_list *list, char **inputs) {
     data_file = fopen(data_path, "ab");
     for (int i = 0; i < list->number_of_measurements; i++) {
         fwrite(&list->indices[i], sizeof(uint32_t), 1, data_file);
-        fwrite(list->measurements[i], sizeof(double), 6, data_file);
+        fwrite(list->measurements[i], sizeof(double), NUM_DATAS, data_file);
     }
     fclose(data_file);
 
@@ -699,12 +699,12 @@ measurement_list *read_data_from_file(char **inputs) {
         for (int i=0; i<LVOLUME; i++) {
             num_read = 0;
             uint32_t index;
-            double measurement[6];
-            /*double mm[6];*/
+            double measurement[NUM_DATAS];
+            /*double mm[NUM_DATAS];*/
             num_read += fread(&index, sizeof(uint32_t), 1, data_file);
-            num_read += fread(measurement, sizeof(double), 6, data_file);
-            /*memcpy(mm, measurement, 6*sizeof(double));*/
-            if (num_read == 7) {
+            num_read += fread(measurement, sizeof(double), NUM_DATAS, data_file);
+            /*memcpy(mm, measurement, NUM_DATAS*sizeof(double));*/
+            if (num_read == NUM_DATAS+1) {
                 add_measurement_to_list(list, index, measurement);
             } else {
                 break;
