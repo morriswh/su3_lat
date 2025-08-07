@@ -671,10 +671,15 @@ void create_info_file(char **inputs) {
 }
 
 void write_data_to_file(measurement_list *list, char **inputs) {
+    char data_dir[200];
+    sprintf(data_dir, "%s/n%sr%sb%st%s", inputs[8], 
+            inputs[1], inputs[2], inputs[4], inputs[5]);
+    mkdir(data_dir, 0755);
     // code to write to file
-    char data_path[200];
-    sprintf(data_path, "%s/n%sr%sb%st%sc%s.bin", inputs[8], inputs[1], 
-            inputs[2], inputs[4], inputs[5], inputs[6]);
+    char data_path[400];
+    sprintf(data_path, "%s/n%sr%sb%st%s/n%sr%sb%st%sc%s.bin", inputs[8], 
+            inputs[1], inputs[2], inputs[4], inputs[5],
+            inputs[1], inputs[2], inputs[4], inputs[5], inputs[6]);
 
     FILE *data_file;
     data_file = fopen(data_path, "ab");
