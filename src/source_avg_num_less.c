@@ -41,9 +41,9 @@ void write_data_to_tsv_file(double *data, char **inputs);
 
 int main(int argc, char *argv[])
 {
-    if (argc < 9 || argc > 9) {
+    if (argc < 10 || argc > 10) {
         printf("Input should look like: \n");
-        printf("%s n ratio num_sources b t config_number"
+        printf("%s n ratio num_sources num_used_sources b t config_number"
                " binary_file data_dir\n", argv[0]);
         exit(1);
     }
@@ -61,9 +61,19 @@ int main(int argc, char *argv[])
     double averaged_data[2] = {0};
     measurement_list *ordered_data = read_data_from_file_in_order(argv);
 
+    int rem = num_sources%num_used_sources;
+    if (rem != 0) {
+        printf("I can't handle cases where the number of used sources doesn't divide the number of sources with zero remainder for now\n");
+        exit(0);
+        // printf("Used sources does not divide number of sources cleanly\n");
+        // printf("Adding %d to number of used sources\n");
+        // num_used_sources += rem;
+    }
+
     int stride = num_sources/num_used_sources;
 
     for (int s = 0; s<num_sources; s+=stride) {
+        printf("%d\n", s);
         int lattice_s;
         source_grid(&lattice_s, s, num_sources);
         if (ordered_data->indices[lattice_s] == -1) {
@@ -169,7 +179,7 @@ void write_data_to_tsv_file(double *data, char **inputs) {
 
     // code to write to file
     char data_path[200];
-    sprintf(data_path, "%s/n%ss%sc%s.tsv", 
+    sprintf(data_path, "%s/n%ss%sus%sc%s.tsv", 
             inputs[9], inputs[1], inputs[3], inputs[4], inputs[7]);
 
 

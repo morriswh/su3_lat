@@ -113,9 +113,7 @@ int main(int argc, char *argv[]) {
         int t = atoll(tStr);
         printf("Calculating for %lf, %d, %d\n", ratio, b, t);
 
-        printf("here1\n");
         create_info_file(inargs); // if it doesn't already exist
-        printf("here2\n");
 
         size_t existantSourceNumber; 
         int *existantSources = 

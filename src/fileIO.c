@@ -34,7 +34,7 @@ int read_nersc(double *U, char *config, char *header, int *header_length) {
     }
 
     // read in configuration data
-    for (int i = 0; i != CLENGTH; i++) {
+    for (size_t i = 0; i != CLENGTH; i++) {
         fread(&package.retriever, sizeof(package.retriever), 1, config_file);
         package.retriever = be64toh(package.retriever);
         U[i] = package.element;
@@ -72,7 +72,7 @@ void write_nersc(double *U, char *out_file, char *header, int header_length) {
     fwrite(header, sizeof(char), header_length, config_file);
     // fwrite(U, sizeof(double), CLENGTH, config_file);
 
-    for (int i = 0; i != CLENGTH; i++) {
+    for (size_t i = 0; i != CLENGTH; i++) {
         package.element = U[i];
         package.sender = htobe64(package.sender);
         fwrite(&package.sender, sizeof(package.sender), 1, config_file);
@@ -207,7 +207,7 @@ int read_scidac(double *U, char *config, char *header, int *header_length) {
     }
 
     // read in configuration data
-    for (int i = 0; i != CLENGTH; i++) {
+    for (size_t i = 0; i != CLENGTH; i++) {
         fread(&package.retriever, sizeof(package.retriever), 1, config_file);
         package.retriever = be64toh(package.retriever);
         U[i] = package.element;
@@ -240,7 +240,7 @@ int checksum(double *U) {
     // crc checksum adapted from Hudspith's GLU code
 
     int res = 0;
-    for (int i = 0; i < CLENGTH; i++) {
+    for (size_t i = 0; i < CLENGTH; i++) {
         int *buf = (int*)(U + i);
         res += *buf + *(buf+1);
     }

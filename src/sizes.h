@@ -9,9 +9,9 @@ extern const int L; // lattice spacial size
 extern const int D; // spacetime dimensions
 extern const int X; // SU(3) gauge theory, 12 reals
 extern const int S_X; // for short storage
-extern const int CLENGTH; // 
+extern const uint64_t CLENGTH; // 
 extern const int S_CLENGTH; // 
-extern const int OLENGTH; //
+extern const uint64_t OLENGTH; //
 extern const int S_OLENGTH; //
 extern const int LLENGTH;
 extern const int LVOLUME;
