@@ -439,7 +439,6 @@ void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
 }
 
 void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
-
     memset(clover, 0, X*sizeof(double));
 
     double temp[X], leaf[X];
@@ -681,7 +680,7 @@ void directional_sum(double *lattice, int *directions,
             int vali = i;
             int valj = j;
             int pos = 0;
-            int coef = 1;
+            int coef = 1; // what is this for?
             for (int k = 0; k < D; k++) {
                 pos += coef*((1-directions[k])*mod(vali, out_shape[k]) + 
                              directions[k]*mod(valj, sum_shape[k]));
@@ -763,7 +762,6 @@ void staples(double *staple, double *U, int spos, int mu, int nu) {
     for (int i = 0; i < X; i++) {
         staple[i] += staple_h[i];
     }
-
 }
 
 void link_trace(double *ltr, double *U) {
@@ -826,7 +824,8 @@ void gauge_action(double *action, double *U) {
     double plaq[X];
     double sum = 0.0;
     double tr[2];
-    int i = 0, j = 0, k = 0;
+    int i = 0;
+    int j = 0, k = 0;
     // I don't understand 'reduction' yet, but apparently it is needed
     #pragma omp parallel for reduction(+:sum) private(tr, plaq, i, j, k)
     for (i = 0; i < LVOLUME; i++) {

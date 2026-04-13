@@ -1,5 +1,5 @@
-file=imProp
-# file=source_avg_num
+# file=imPropNum
+file=source_avg_num_less
 
 all: build
 
@@ -18,4 +18,8 @@ build:
 	# ar rcs libslat.a slat.o
 	# gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -g -o $(file) -lm --openmp
 	gcc $(file).c -I. -L. -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file) -lm --openmp
+	# gcc $(file).c -I. -L. -lfileIO -lsu3lib -lsizes -g -o ../$(file) -lm --openmp
+
+clean:
+	rm *.o *.a
 

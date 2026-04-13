@@ -45,14 +45,14 @@ int read_nersc(double *U, char *config, char *header, int *header_length) {
     char label[] = "CHECKSUM\0";
     find_nersc_value(read_cksm, label, 8, header, *header_length);
     printf("Read checksum from header = %s\n", read_cksm);
-    uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
+    int read_cks = (int)strtol(read_cksm, NULL, 16);
 
-    uint32_t cks = checksum(U);
+    int cks = checksum(U);
     char cksm[20];
     snprintf(cksm, 20, "%x", cks);
     printf("Computed checksum = %s\n", cksm);
 
-    uint32_t cks_diff = read_cks-cks;
+    int cks_diff = read_cks-cks;
     printf("Difference = %u\n", cks_diff);
     if (cks_diff != 0) {
         printf("checksum failed!\n");
@@ -85,7 +85,7 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
     // Ultimately this should take a structure as an argument with
     // all the relavant information
 
-    uint32_t cks = checksum(U);
+    int cks = checksum(U);
     char cksm[20];
     snprintf(cksm, 20, "%x", cks);
 
@@ -186,6 +186,7 @@ void find_nersc_value(char *value, char *label, int label_length, char *header, 
 }
 
 int read_scidac(double *U, char *config, char *header, int *header_length) {
+    // this is nothing, what is this, fix this
     union {
         long int retriever;
         double element;
@@ -217,14 +218,14 @@ int read_scidac(double *U, char *config, char *header, int *header_length) {
     char label[] = "CHECKSUM\0";
     find_nersc_value(read_cksm, label, 8, header, *header_length);
     printf("Read checksum from header = %s\n", read_cksm);
-    uint32_t read_cks = (uint32_t)strtol(read_cksm, NULL, 16);
+    int read_cks = (int)strtol(read_cksm, NULL, 16);
 
-    uint32_t cks = checksum(U);
+    int cks = checksum(U);
     char cksm[20];
     snprintf(cksm, 20, "%x", cks);
     printf("Computed checksum = %s\n", cksm);
 
-    uint32_t cks_diff = read_cks-cks;
+    int cks_diff = read_cks-cks;
     printf("Difference = %u\n", cks_diff);
     if (cks_diff != 0) {
         printf("checksum failed!\n");
@@ -235,12 +236,12 @@ int read_scidac(double *U, char *config, char *header, int *header_length) {
 
 }
 
-uint32_t checksum(double *U) {
+int checksum(double *U) {
     // crc checksum adapted from Hudspith's GLU code
 
-    uint32_t res = 0;
+    int res = 0;
     for (int i = 0; i < CLENGTH; i++) {
-        uint32_t *buf = (uint32_t*)(U + i);
+        int *buf = (int*)(U + i);
         res += *buf + *(buf+1);
     }
 

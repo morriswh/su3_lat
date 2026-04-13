@@ -22,7 +22,7 @@ enum dim{mu_x, mu_y, mu_z, mu_t};
 
 // Creating the structure
 typedef struct {
-    uint32_t *indices; // store lattice index for unordered file write
+    int *indices; // store lattice index for unordered file write
     double **measurements; // array of measurements, NUM_DATAS doubles
     size_t number_of_measurements;
     size_t size;
@@ -57,8 +57,8 @@ int *setup_parallization(int *sizes_extent, int num_sources);
 void create_info_file(char **inputs);
 void write_data_to_file(measurement_list *list, char **inputs);
 measurement_list *read_data_from_file(char **inputs);
-uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs);
-int in_source_list(uint32_t source, uint32_t *source_list, size_t size);
+int *get_existing_sources(size_t *number_of_sources, char **inputs);
+int in_source_list(int source, int *source_list, size_t size);
 int ssl2sa(char *s, char **a); // space-separated list to string array
 
 // void build_string(char *out, char *in[], int length);
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     char **ratioList = malloc(rSize*sizeof(char*));
     ssl2sa(argv[2], ratioList);
 
-    int nSources = atoi(argv[3]);
+    int nSources = atoll(argv[3]);
 
     int bSize = ssl2sa(argv[4], NULL);
     char **bList = malloc(bSize*sizeof(char*));
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
         printf("here2\n");
 
         size_t existantSourceNumber; 
-        uint32_t *existantSources = 
+        int *existantSources = 
             get_existing_sources(&existantSourceNumber, inargs);
 
         // setup parallelization // move this outside loops, global variable
@@ -435,7 +435,7 @@ measurement_list *create_measurement_list(size_t block_size) {
         list->number_of_measurements = 0;
         list->size = block_size;
         list->block_size = block_size;
-        list->indices = (uint32_t*)malloc(sizeof(uint32_t*)*block_size);
+        list->indices = (int*)malloc(sizeof(int*)*block_size);
         list->measurements = (double**)malloc(sizeof(double**)*block_size);
         if (list->indices == NULL || list->measurements == NULL) {
             free(list);
@@ -453,14 +453,14 @@ int add_measurement_to_list(measurement_list *list, int index,
 
     if (num_measurements >= list->size) {
         size_t new_size = list->size + list->block_size;
-        void *new_indices = realloc(list->indices, sizeof(uint32_t)*new_size);
+        void *new_indices = realloc(list->indices, sizeof(int)*new_size);
         void *new_measurements = 
             realloc(list->measurements, sizeof(double*)*new_size);
         if (new_indices == NULL || new_measurements == NULL) {
             return 1;
         } else {
             list->size = new_size;
-            list->indices = (uint32_t*)new_indices;
+            list->indices = (int*)new_indices;
             list->measurements = (double**)new_measurements;
         }
     }
@@ -611,7 +611,7 @@ void create_info_file(char **inputs) {
         info_file = fopen(info_path, "w");
 
         /*fprintf(info_file, header);*/
-        fprintf(info_file, "Layout: (uint32_t)(NUM_DATAS*double)\n");
+        fprintf(info_file, "Layout: (int)(NUM_DATAS*double)\n");
         fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\t"
                            "denA.imag\tdenB.real\tdenB.imag\n");
         fprintf(info_file, "n=%s\n",inputs[1]);
@@ -639,7 +639,7 @@ void write_data_to_file(measurement_list *list, char **inputs) {
     FILE *data_file;
     data_file = fopen(data_path, "ab");
     for (int i = 0; i < list->number_of_measurements; i++) {
-        fwrite(&list->indices[i], sizeof(uint32_t), 1, data_file);
+        fwrite(&list->indices[i], sizeof(int), 1, data_file);
         fwrite(list->measurements[i], sizeof(double), NUM_DATAS, data_file);
     }
     fclose(data_file);
@@ -658,10 +658,10 @@ measurement_list *read_data_from_file(char **inputs) {
         size_t num_read;
         for (int i=0; i<LVOLUME; i++) {
             num_read = 0;
-            uint32_t index;
+            int index;
             double measurement[NUM_DATAS];
             /*double mm[NUM_DATAS];*/
-            num_read += fread(&index, sizeof(uint32_t), 1, data_file);
+            num_read += fread(&index, sizeof(int), 1, data_file);
             num_read += fread(measurement, sizeof(double), NUM_DATAS, data_file);
             /*memcpy(mm, measurement, NUM_DATAS*sizeof(double));*/
             if (num_read == NUM_DATAS+1) {
@@ -676,9 +676,9 @@ measurement_list *read_data_from_file(char **inputs) {
     return list;
 }
 
-uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs) {
+int *get_existing_sources(size_t *number_of_sources, char **inputs) {
     measurement_list *list = read_data_from_file(inputs);
-    uint32_t *existant_sources = 
+    int *existant_sources = 
         malloc(sizeof(*existant_sources) * list->number_of_measurements);
     /*if (existant_sources == NULL) {*/
     /*    return 0;*/
@@ -695,7 +695,7 @@ uint32_t *get_existing_sources(size_t *number_of_sources, char **inputs) {
     return existant_sources;
 }
 
-int in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
+int in_source_list(int source, int *source_list, size_t size) {
     for (size_t i = 0; i < size; i++) {
         if (source == source_list[i]) {
             return 1;

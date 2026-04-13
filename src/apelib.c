@@ -231,7 +231,8 @@ void newton_reunit(double *m) {
     /*    double complex mc[3];*/
     /*} mm; */
 
-    double complex mc[9];
+    int Xc = X/2;
+    double complex mc[Xc];
     /*for (int i = 0; i < 9; i++) {*/
     /*    mc[i] = m[2*i] + m[2*i+1]*I;*/
     /*}*/
@@ -246,7 +247,7 @@ void newton_reunit(double *m) {
 
     double complex one_div_det_cube_root = 1.0/cpowf(detmc, 1.0/3.0);
 
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < Xc; i++) {
         mc[i] = one_div_det_cube_root*mc[i];
     }
 

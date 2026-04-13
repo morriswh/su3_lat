@@ -16,7 +16,7 @@
 #include "su3lib.h"
 
 typedef struct {
-    uint32_t *indices; // store lattice index for unordered file write
+    int *indices; // store lattice index for unordered file write
     double **measurements; // array of measurements, probably 2 doubles
     size_t number_of_measurements;
     size_t size;
@@ -92,7 +92,7 @@ measurement_list *create_full_measurement_list(size_t block_size) {
         list->number_of_measurements = block_size;
         list->size = block_size;
         list->block_size = block_size;
-        list->indices = malloc(sizeof(uint32_t)*block_size);
+        list->indices = malloc(sizeof(int)*block_size);
         list->measurements = malloc(sizeof(double*)*block_size);
         if (list->indices == NULL || list->measurements == NULL) {
             free(list);
@@ -135,16 +135,16 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
     measurement_list *list = create_full_measurement_list(LVOLUME);
     char *data_path = inputs[7];
 
-    memset(list->indices, -1, LVOLUME*sizeof(uint32_t));
+    memset(list->indices, -1, LVOLUME*sizeof(int));
 
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
         for (int i=0; i<LVOLUME; i++) {
             num_read = 0;
-            uint32_t index;
+            int index;
             double measurement[2];
-            num_read += fread(&index, sizeof(uint32_t), 1, data_file);
+            num_read += fread(&index, sizeof(int), 1, data_file);
             num_read += fread(measurement, sizeof(double), 2, data_file);
             if (num_read == 3) {
                 list->indices[index] = index;

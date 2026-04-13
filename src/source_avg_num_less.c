@@ -16,8 +16,8 @@
 #include "su3lib.h"
 
 typedef struct {
-    uint32_t *indices; // store lattice index for unordered file write
-    double **measurements; // array of measurements, probably 6 doubles
+    int *indices; // store lattice index for unordered file write
+    double **measurements; // array of measurements, probably 2 doubles
     size_t number_of_measurements;
     size_t size;
     size_t block_size;
@@ -27,7 +27,7 @@ typedef struct {
 /*    int t;*/
 /*    int b;*/
 /*    int number_of_sources;*/
-/*    double *data; // array of measurements, probably 6 doubles*/
+/*    double *data; // array of measurements, probably 2 doubles*/
 /*} averaged_data;*/
 
 // create a struct containing dynamic list of measurements
@@ -38,33 +38,34 @@ void source_grid(int *pos, int source, int num_sources);
 measurement_list *read_data_from_file_in_order(char **inputs);
 double *average_sources(measurement_list *list);
 void write_data_to_tsv_file(double *data, char **inputs);
-double getPhi(int *shape);
-void stoia(int *output, char *input);
 
 int main(int argc, char *argv[])
 {
-    if (argc < 7 || argc > 7) {
+    if (argc < 9 || argc > 9) {
         printf("Input should look like: \n");
-        printf("%s num_sources b shape config_number"
+        printf("%s n ratio num_sources b t config_number"
                " binary_file data_dir\n", argv[0]);
         exit(1);
     }
 
-    int numSources = atoi(argv[1]);
-    int b = atoi(argv[2]);
-    int shape[4];
-    stoia(shape, argv[3]);
-
-    char *config_number = argv[4];
-    char *binary_path = argv[5];
-    char *data_dir = argv[6];
+    int n = atoi(argv[1]);
+    double ratio = atof(argv[2]);
+    int num_sources = atoi(argv[3]);
+    int num_used_sources = atoi(argv[4]);
+    int b = atoi(argv[5]);
+    int t = atoi(argv[6]);
+    char *config_number = argv[7];
+    char *binary_path = argv[8];
+    char *data_dir = argv[9];
 
     double averaged_data[2] = {0};
     measurement_list *ordered_data = read_data_from_file_in_order(argv);
 
-    for (int s = 0; s<numSources; s++) {
+    int stride = num_sources/num_used_sources;
+
+    for (int s = 0; s<num_sources; s+=stride) {
         int lattice_s;
-        source_grid(&lattice_s, s, numSources);
+        source_grid(&lattice_s, s, num_sources);
         if (ordered_data->indices[lattice_s] == -1) {
             printf("missing data!\n");
             exit(1);
@@ -77,8 +78,8 @@ int main(int argc, char *argv[])
     delete_measurement_list(ordered_data);
 
     for (int i = 0; i<2; i++) {
-        averaged_data[i] /= numSources;
-        /*printf("%lf ", averaged_data[i]);*/
+        averaged_data[i] /= num_used_sources;
+        printf("%lf ", averaged_data[i]);
     }
     printf("\n");
 
@@ -94,7 +95,7 @@ measurement_list *create_full_measurement_list(size_t block_size) {
         list->number_of_measurements = block_size;
         list->size = block_size;
         list->block_size = block_size;
-        list->indices = malloc(sizeof(uint32_t)*block_size);
+        list->indices = malloc(sizeof(int)*block_size);
         list->measurements = malloc(sizeof(double*)*block_size);
         if (list->indices == NULL || list->measurements == NULL) {
             free(list);
@@ -135,18 +136,18 @@ void source_grid(int *pos, int source, int num_sources) {
 measurement_list *read_data_from_file_in_order(char **inputs) {
 
     measurement_list *list = create_full_measurement_list(LVOLUME);
-    char *data_path = inputs[5];
+    char *data_path = inputs[8];
 
-    memset(list->indices, -1, LVOLUME*sizeof(uint32_t));
+    memset(list->indices, -1, LVOLUME*sizeof(int));
 
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
         for (int i=0; i<LVOLUME; i++) {
             num_read = 0;
-            uint32_t index;
+            int index;
             double measurement[2];
-            num_read += fread(&index, sizeof(uint32_t), 1, data_file);
+            num_read += fread(&index, sizeof(int), 1, data_file);
             num_read += fread(measurement, sizeof(double), 2, data_file);
             if (num_read == 3) {
                 list->indices[index] = index;
@@ -166,15 +167,10 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
 
 void write_data_to_tsv_file(double *data, char **inputs) {
 
-    int shape[4];
-    stoia(shape, inputs[3]);
-
-    double phi = getPhi(shape);
-
     // code to write to file
     char data_path[200];
-    sprintf(data_path, "%s/s%sc%s.tsv", 
-            inputs[6], inputs[1], inputs[4]);
+    sprintf(data_path, "%s/n%ss%sc%s.tsv", 
+            inputs[9], inputs[1], inputs[3], inputs[4], inputs[7]);
 
 
     struct stat buffer;
@@ -184,45 +180,15 @@ void write_data_to_tsv_file(double *data, char **inputs) {
     tsv_file = fopen(data_path, "a");
 
     if (result != 0) {
-        fprintf(tsv_file, "# b\tphi\tleg1\tleg2\tleg3\tleg4\tbutterfly_real\tbutterfly_imag\t\n");
+        fprintf(tsv_file, "# r\tb\tt\tnum.real\tnum.imag\t\n");
     }
 
-    fprintf(tsv_file, "%s\t%lf\t%d\t%d\t%d\t%d\t%lf\t%lf\t\n", 
-            inputs[2], 
-            phi, shape[0], shape[1], shape[2], shape[3], data[0], data[1]);
+    fprintf(tsv_file, "%s\t%s\t%s\t%lf\t%lf\t\n", 
+            inputs[2], inputs[4], inputs[5], data[0], data[1]);
 
     fclose(tsv_file);
     
 }
-
-double getPhi(int *shape) {
-    double dotAB = (double) (shape[0]*shape[2] + shape[1]*shape[3]);
-    double magA = (double) sqrt(shape[0]*shape[0] + shape[1]*shape[1]);
-    double magB = (double) sqrt(shape[2]*shape[2] + shape[3]*shape[3]);
-    double ratio = dotAB/(magA*magB);
-    return acos(ratio);
-}
-
-void stoia(int *output, char *input) {
-
-    int index = 0;
-
-    int start = 0;
-    int end = -1;
-    do {
-        end++;
-        char tmps[5];
-        if (input[end] == ' ' || input[end] == '\0') {
-            strncpy(tmps, input + start, sizeof(char)*(end-start));
-            tmps[end-start] = '\0';
-            output[index] = atoi(tmps);
-            index++;
-            start = end+1;
-        }
-    } while (input[end] != '\0');
-
-}
-
 
 
 

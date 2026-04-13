@@ -10,6 +10,6 @@ int read_scidac(double *U, char *config, char *header, int *header_length);
 /*void write_scidac(double *U, char *out_file, char *header, int header_length);*/
 /*void make_scidac_header(char *header, int *header_length, double *U, char *label);*/
 
-uint32_t checksum(double *U);
+int checksum(double *U);
 
 #endif // !FILEIO_H
