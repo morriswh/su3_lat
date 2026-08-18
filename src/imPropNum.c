@@ -111,7 +111,6 @@ int main(int argc, char *argv[]) {
         double ratio = atof(ratioStr);
         int b = atoll(bStr);
         int t = atoll(tStr);
-        printf("Calculating for %lf, %d, %d\n", ratio, b, t);
 
         create_info_file(inargs); // if it doesn't already exist
 
@@ -152,6 +151,9 @@ int main(int argc, char *argv[]) {
                 // here is where the physics happens
                 compute_observables(trace_array, lattice_s, V, n, ratio, t, b, 
                                     prop_num, prop_den);
+
+                // print result of compute_observables
+                printf("%d, %d, %lf, %lf\n", parallel_s, s, trace_array[0], trace_array[1]);
 
                 if(add_measurement_to_list(data_list, 
                                            lattice_s, trace_array) != 0) {

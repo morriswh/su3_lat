@@ -17,7 +17,7 @@ build:
 	# gcc -c slat.c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -o slat.o -Wall -Wextra
 	# ar rcs libslat.a slat.o
 	# gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -g -o $(file) -lm --openmp
-	gcc $(file).c -I. -L. -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file) -lm --openmp
+	gcc $(file).c -I. -L. -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file)32old -lm --openmp
 	# gcc $(file).c -I. -L. -lfileIO -lsu3lib -lsizes -g -o ../$(file) -lm --openmp
 
 clean:
