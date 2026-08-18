@@ -1,29 +1,28 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
-#include <inttypes.h>
 #include <time.h>
 #include "sizes.h"
 #include "fileIO.h"
 #include "su3lib.h"
 
-int read_nersc(double *U, char *config, char *header, int *header_length) {
+int32_t read_nersc(double *U, char *config, char *header, int32_t *header_length) {
     // need to figure out the issue with fread and doubles for the NERSC config
     // for now the union method works I guess
     union {
-        long long int retriever;
+        int64_t retriever;
         double element;
     } package; 
 
     FILE *config_file = fopen(config, "rb");
-    int safety = 2000;
+    int32_t safety = 2000;
     char check_end[] = "END_HEADER\n";
     *header_length = 0;
-    for (int i = 0; i < safety; i++) {
+    for (int32_t i = 0; i < safety; i++) {
         header[i] = fgetc(config_file);
         *header_length += 1;
         if ( i > 10) {
@@ -34,7 +33,7 @@ int read_nersc(double *U, char *config, char *header, int *header_length) {
     }
 
     // read in configuration data
-    for (long int i = 0; i != CLENGTH; i++) {
+    for (int64_t i = 0; i != CLENGTH; i++) {
         fread(&package.retriever, sizeof(package.retriever), 1, config_file);
         package.retriever = be64toh(package.retriever);
         U[i] = package.element;
@@ -62,9 +61,9 @@ int read_nersc(double *U, char *config, char *header, int *header_length) {
     return 0;
 }
 
-void write_nersc(double *U, char *out_file, char *header, int header_length) {
+void write_nersc(double *U, char *out_file, char *header, int32_t header_length) {
     union {
-        long long int sender;
+        int64_t sender;
         double element;
     } package; 
 
@@ -72,7 +71,7 @@ void write_nersc(double *U, char *out_file, char *header, int header_length) {
     fwrite(header, sizeof(char), header_length, config_file);
     // fwrite(U, sizeof(double), CLENGTH, config_file);
 
-    for (long int i = 0; i != CLENGTH; i++) {
+    for (int64_t i = 0; i != CLENGTH; i++) {
         package.element = U[i];
         package.sender = htobe64(package.sender);
         fwrite(&package.sender, sizeof(package.sender), 1, config_file);
@@ -80,7 +79,7 @@ void write_nersc(double *U, char *out_file, char *header, int header_length) {
     fclose(config_file);
 }
 
-void make_nersc_header(char *header, int *header_length, double *U, char* label) {
+void make_nersc_header(char *header, int32_t *header_length, double *U, char* label) {
     // First gather all the information
     // Ultimately this should take a structure as an argument with
     // all the relavant information
@@ -126,7 +125,7 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
     // Now make the header
     char new_header[1000];
     // char line[100];
-    int old_index = 0, new_index = 0;
+    int32_t old_index = 0, new_index = 0;
     // char line_end[] = "END_HEADER\n";
     char *lines[] = {
         "CHECKSUM\0",
@@ -138,8 +137,8 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
     };
     while( old_index < *header_length ){
         new_header[new_index] = header[old_index];
-        for (int j = 0; j < 6; j++ ) {
-            int prop_size = 0;
+        for (int32_t j = 0; j < 6; j++ ) {
+            int32_t prop_size = 0;
             while (lines[j][prop_size] != '\0') {
                 prop_size++;
             };
@@ -148,7 +147,7 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
                 new_index += prop_size;
                 memcpy(&new_header[new_index], " = ", 3*sizeof(char));
                 new_index += 3;
-                int i = 0;
+                int32_t i = 0;
                 while (inputs[j][i] != '\0') {
                     new_header[new_index] = inputs[j][i];
                     i++;
@@ -169,11 +168,11 @@ void make_nersc_header(char *header, int *header_length, double *U, char* label)
     memcpy(header, new_header, sizeof(char)*(*header_length+1));
 }
 
-void find_nersc_value(char *value, char *label, int label_length, char *header, int header_length) {
-    for (int i = 0; i < header_length; i++) {
+void find_nersc_value(char *value, char *label, int32_t label_length, char *header, int32_t header_length) {
+    for (int32_t i = 0; i < header_length; i++) {
         if (strncmp(&header[i], label, label_length*sizeof(char)) == 0) {
             i = i + label_length + 3; // the 3 is for ' = '
-            int j = 0;
+            int32_t j = 0;
             while (header[i] != '\n') {
                 value[j] = header[i];
                 i++;
@@ -185,17 +184,17 @@ void find_nersc_value(char *value, char *label, int label_length, char *header, 
     }
 }
 
-int read_scidac(double *U, char *config, char *header, int *header_length) {
+int32_t read_scidac(double *U, char *config, char *header, int32_t *header_length) {
     union {
-        long long int retriever;
+        int64_t retriever;
         double element;
     } package; 
 
     FILE *config_file = fopen(config, "rb");
-    int safety = 2000;
+    int32_t safety = 2000;
     char check_end[] = "END_HEADER\n";
     *header_length = 0;
-    for (int i = 0; i < safety; i++) {
+    for (int32_t i = 0; i < safety; i++) {
         header[i] = fgetc(config_file);
         *header_length += 1;
         if ( i > 10) {
@@ -206,7 +205,7 @@ int read_scidac(double *U, char *config, char *header, int *header_length) {
     }
 
     // read in configuration data
-    for (long int i = 0; i != CLENGTH; i++) {
+    for (int64_t i = 0; i != CLENGTH; i++) {
         fread(&package.retriever, sizeof(package.retriever), 1, config_file);
         package.retriever = be64toh(package.retriever);
         U[i] = package.element;
@@ -239,7 +238,7 @@ uint32_t checksum(double *U) {
     // crc checksum adapted from Hudspith's GLU code
 
     uint32_t res = 0;
-    for (long int i = 0; i < CLENGTH; i++) {
+    for (int64_t i = 0; i < CLENGTH; i++) {
         uint32_t *buf = (uint32_t*)(U + i);
         res += *buf + *(buf+1);
     }
