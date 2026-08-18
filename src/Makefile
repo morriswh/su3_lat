@@ -1,5 +1,5 @@
 file=imPropNum
-# file=source_avg_num_less
+file2=source_avg_num
 
 all: build
 
@@ -14,12 +14,9 @@ build:
 	ar rcs libsu3lib.a su3lib.o
 	gcc -c apelib.c -o apelib.o -Wall -Wextra -lm --openmp
 	ar rcs libapelib.a apelib.o
-	# gcc -c slat.c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -o slat.o -Wall -Wextra
-	# ar rcs libslat.a slat.o
-	# gcc $(file).c -I. -L. -lapelib -lsu3lib -lmatops -lsizes -lblas -llapack -g -o $(file) -lm --openmp
-	gcc $(file).c -I. -L. -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file)32old -lm --openmp
-	# gcc $(file).c -I. -L. -lfileIO -lsu3lib -lsizes -g -o ../$(file) -lm --openmp
+	gcc $(file).c -I. -L. -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file)32 -lm --openmp
+	gcc $(file2).c -I. -L. -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -g -o ../$(file2)32 -lm --openmp
 
 clean:
-	rm *.o *.a
+	rm -f *.a *.o
 

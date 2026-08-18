@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <omp.h>
+#define LAPACK_ILP64
 #include <openblas64/lapack.h>
 // #include <lapacke.h>
 #include "sizes.h"
@@ -15,13 +16,10 @@ void inverse(double *a, double *b) {
     transpose(a,b);
     // memcpy(a,b,X*sizeof(double));
     
-    // lapack_int *IPIV = malloc(NC*sizeof(int));
-    lapack_int IPIV[NC];
+    lapack_int *IPIV = malloc(NC*sizeof(int32_t));
     lapack_int info_rf, info_ri;
+    lapack_complex_double work[16];
     lapack_int lwork = 100*NC;
-    /*lapack_complex_double work[16];*/
-    // lapack_complex_double *work = malloc(lwork*sizeof(lapack_complex_double));
-    lapack_complex_double work[lwork];
     //
     // info_rf = LAPACKE_zgetrf(LAPACK_ROW_MAJOR, NC, NC, (lapack_complex_double*)a, NC, IPIV);
     // info_ri = LAPACKE_zgetri(LAPACK_ROW_MAJOR, NC, (lapack_complex_double*)a, NC, IPIV);
@@ -33,14 +31,13 @@ void inverse(double *a, double *b) {
 
     transpose(a,a);
 
-    // free(IPIV);
-    // free(work);
+    free(IPIV);
 
 }
 
 void transpose(double *xc, double *x) {
     double y[X];
-    for (int i = 0; i < X; i++) {
+    for (int64_t i = 0; i < X; i++) {
         y[i] = x[i];
     }
     xc[0] = y[0];       

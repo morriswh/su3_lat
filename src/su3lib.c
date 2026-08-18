@@ -26,7 +26,7 @@ void rnd_config(double *U) {
     double dot_real, dot_imag;
     double norm_u2, norm_u;
     double norm_v2, norm_v;
-    int i, j, p;
+    int64_t i, j, p;
     for (i = 0; i < LLENGTH; i++) {
         for (j = 0; j < S_X; j++) {
             temp[j] = 2*(double)rand()/(double)RAND_MAX - 1;
@@ -96,7 +96,7 @@ void rnd_gauge_tr(double *Omega) {
     double dot_real, dot_imag;
     double norm_u2, norm_u;
     double norm_v2, norm_v;
-    int i, j, p;
+    int64_t i, j, p;
     for (i = 0; i < LVOLUME; i++) {
         for (j = 0; j < S_X; j++) {
             temp[j] = 2*(double)rand()/(double)RAND_MAX - 1;
@@ -158,43 +158,43 @@ void rnd_gauge_tr(double *Omega) {
 
 }
 
-void get_index(int i) {
-    // int x = i%X;
-    // int mu = (i/X)%D;
-    // int l = ((i/X)/D)%L;
-    // int t = (((i/X)/D)/L)%T;
-    // printf("%d, %d, %d, %d\n", t, l, mu, x);
-    // int mu = i%D;
-    int x = i%L;
-    int y = (i/L)%L;
-    int z = (i/LSQUARE)%L;
-    int t = (i/LCUBE)%T;
-    // printf("%d, %d, %d, %d, %d\n", x, y, z, t, mu);
-    printf("%d, %d, %d, %d\n", x, y, z, t);
+void get_index(int64_t i) {
+    // int64_t x = i%X;
+    // int64_t mu = (i/X)%D;
+    // int64_t l = ((i/X)/D)%L;
+    // int64_t t = (((i/X)/D)/L)%T;
+    // printf("%ld , %ld , %ld , %ld \n", t, l, mu, x);
+    // int64_t mu = i%D;
+    int64_t x = i%L;
+    int64_t y = (i/L)%L;
+    int64_t z = (i/LSQUARE)%L;
+    int64_t t = (i/LCUBE)%T;
+    // printf("%ld , %ld , %ld , %ld , %ld \n", x, y, z, t, mu);
+    printf("%ld , %ld , %ld , %ld \n", x, y, z, t);
 }
 
-void get_link(double *link, double *U, int pos) {
+void get_link(double *link, double *U, int64_t pos) {
     pos = mod(pos, LLENGTH);
     pos *= X;
     memcpy(link,&U[pos],sizeof(double)*X);
-    // for (int i = 0; i < X; i++) {
+    // for (int64_t i = 0; i < X; i++) {
     //     link[i] = U[pos+i];
     // }
 }
 
-void get_site(double *site, double *S, int spos) {
+void get_site(double *site, double *S, int64_t spos) {
     spos = mod(spos, LVOLUME);
     spos *= X;
     memcpy(site,&S[spos],sizeof(double)*X);
-    // for (int i = 0; i < X; i++) {
+    // for (int64_t i = 0; i < X; i++) {
     //     site[i] = S[spos+i];
     // }
 }
 
-int ipow(int base, int exp)
+int64_t ipow(int64_t base, int64_t exp)
 {
     // borrowed this from a stackexchange post
-    int result = 1;
+    int64_t result = 1;
     for (;;)
     {
         if (exp & 1)
@@ -208,7 +208,7 @@ int ipow(int base, int exp)
     return result;
 }
 
-int mod(int value, int period) {
+int64_t mod(int64_t value, int64_t period) {
     // avoid taking unnecessary operations
     if (value >= 0 && value < period) {
         return value;
@@ -224,7 +224,7 @@ void matmul(double *z, double *x, double *y) {
     double v[X];
     memcpy(u,x,X*sizeof(double));
     memcpy(v,y,X*sizeof(double));
-    // for (int i = 0; i < X; i++) {
+    // for (int64_t i = 0; i < X; i++) {
     //     u[i] = x[i];
     //     v[i] = y[i];
     // }
@@ -291,7 +291,7 @@ void cmmul(double *z, double c, double *x) {
 
 void adjoint(double *xc, double *x) {
     double y[X];
-    for (int i = 0; i < X; i++) {
+    for (int64_t i = 0; i < X; i++) {
         y[i] = x[i];
     }
     xc[0] = y[0];       // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]
@@ -351,9 +351,9 @@ void det(double *result, double *m) {
     result[1] = min1_imag*m[0] + min1_real*m[1] - min2_imag*m[2] - min2_real*m[3] + min3_imag*m[4] + min3_real*m[5];
 }
 
-void plaquette(double *plaq, double *U, int spos, int mu, int nu) {
+void plaquette(double *plaq, double *U, int64_t spos, int64_t mu, int64_t nu) {
     // spos is in LVOLUME now
-    int step_mu, step_nu, stride_mu, stride_nu;
+    int64_t step_mu, step_nu, stride_mu, stride_nu;
 
     if (mu == 0) {
         step_mu = 1;
@@ -389,7 +389,7 @@ void plaquette(double *plaq, double *U, int spos, int mu, int nu) {
         stride_nu = LVOLUME;
     }
 
-    int pos = D*spos + mu;
+    int64_t pos = D*spos + mu;
     double temp[X];
     get_link(plaq, U, mod(pos, LLENGTH));
     // matmul(plaq,plaq,temp);
@@ -412,11 +412,11 @@ void plaquette(double *plaq, double *U, int spos, int mu, int nu) {
 
 void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
     double splaq = 0.0, tplaq = 0.0;
-    int i;
+    int64_t i;
     #pragma omp parallel for private(i) reduction(+:splaq) reduction(+:tplaq)
     for (i = 0; i < LVOLUME; i++) {
         double tr[2], plaq[X], help = 0.0;
-        int mu, nu;
+        int64_t mu, nu;
         for (mu = 0; mu < D-1; mu++) {
             for (nu = mu+1; nu < D-1; nu++) {
                 plaquette(plaq, U, i, mu, nu);
@@ -438,13 +438,14 @@ void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
     *a_plaq = 0.5*( *s_plaq + *t_plaq );
 }
 
-void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
+void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu) {
+
     memset(clover, 0, X*sizeof(double));
 
     double temp[X], leaf[X];
     // double clover_l1[X], clover_l2[X], clover_l3[X], clover_l4[X];
-    int pos;
-    int step_mu, step_nu, stride_mu, stride_nu;
+    int64_t pos;
+    int64_t step_mu, step_nu, stride_mu, stride_nu;
 
     if (mu == 0) {
         step_mu = 1;
@@ -499,7 +500,7 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             adjoint(temp, temp);
             matmul(leaf, leaf, temp);
 
-            for (int i = 0; i < X; i++) {
+            for (int64_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
@@ -523,7 +524,7 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             get_link(temp, U, mod(pos, LLENGTH));
             matmul(leaf, leaf, temp);
 
-            for (int i = 0; i < X; i++) {
+            for (int64_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
@@ -548,7 +549,7 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             get_link(temp, U, mod(pos, LLENGTH));
             matmul(leaf, leaf, temp);
 
-            for (int i = 0; i < X; i++) {
+            for (int64_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
@@ -572,25 +573,25 @@ void cloverleaf(double *clover, double *U, int spos, int mu, int nu) {
             adjoint(temp, temp);
             matmul(leaf, leaf, temp);
 
-            for (int i = 0; i < X; i++) {
+            for (int64_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
     adjoint(temp, clover);
-    for (int i = 0; i < X; i++) {
+    for (int64_t i = 0; i < X; i++) {
         clover[i] -= temp[i];
         clover[i] *= 1.0/8.0;
     }
     // print_link(clover);
 }
 
-void top_charge_density(double *topo_charge_density, double *U, int spos) {
+void top_charge_density(double *topo_charge_density, double *U, int64_t spos) {
 
     double tcharge[2] = {0};
     // memcpy(tcharge, topo_charge, 2*sizeof(double));
     // memset(tcharge, 0, 2*sizeof(double));
 
-    int i;
+    int64_t i;
     double C1[X], C2[X], C3[X], C4[X], C5[X], C6[X];
     double O1[X], O2[X], O3[X], O4[X], O5[X], O6[X];
     double PT[X];
@@ -627,7 +628,7 @@ void top_charge(double *topo_charge, double *U) {
     double tcharge[2] = {0};
 
     #pragma omp parallel for reduction(+: tcharge)
-    for (int spos = 0; spos < LVOLUME; spos++) {
+    for (int64_t spos = 0; spos < LVOLUME; spos++) {
 
         double tcharged[2] = {0};
 
@@ -641,19 +642,19 @@ void top_charge(double *topo_charge, double *U) {
     topo_charge[1] = tcharge[1];
 }
 
-void directional_sum(double *lattice, int *directions, 
-                     double *out_array, int out_array_size) {
+void directional_sum(double *lattice, int64_t *directions, 
+                     double *out_array, int64_t out_array_size) {
 
     // First, we determine the size of the output array, and the size of
     // elements to be summed over. We also create two shape arrays to help
     // with the logic for the directional sums.
 
-    int sum_shape[] = {1, 1, 1, 1}; 
-    int out_shape[] = {1, 1, 1, 1}; 
-    int out_size = 1;
-    int sum_size = 1;
+    int64_t sum_shape[] = {1, 1, 1, 1}; 
+    int64_t out_shape[] = {1, 1, 1, 1}; 
+    int64_t out_size = 1;
+    int64_t sum_size = 1;
 
-    for (int i = 0; i < D-1; i ++) {
+    for (int64_t i = 0; i < D-1; i ++) {
         if (directions[i] == 0) {
             out_size *= L;
             out_shape[i] = L;
@@ -675,13 +676,13 @@ void directional_sum(double *lattice, int *directions,
         exit(1);
     }
 
-    for (int i = 0; i < out_size; i++) {
-        for (int j = 0; j < sum_size; j++) {
-            int vali = i;
-            int valj = j;
-            int pos = 0;
-            int coef = 1; // what is this for?
-            for (int k = 0; k < D; k++) {
+    for (int64_t i = 0; i < out_size; i++) {
+        for (int64_t j = 0; j < sum_size; j++) {
+            int64_t vali = i;
+            int64_t valj = j;
+            int64_t pos = 0;
+            int64_t coef = 1;
+            for (int64_t k = 0; k < D; k++) {
                 pos += coef*((1-directions[k])*mod(vali, out_shape[k]) + 
                              directions[k]*mod(valj, sum_shape[k]));
                 vali /= out_shape[k];
@@ -693,9 +694,9 @@ void directional_sum(double *lattice, int *directions,
     }
 }
 
-void staples(double *staple, double *U, int spos, int mu, int nu) {
+void staples(double *staple, double *U, int64_t spos, int64_t mu, int64_t nu) {
     // spos is in LVOLUME now
-    int step_mu, step_nu, stride_mu, stride_nu;
+    int64_t step_mu, step_nu, stride_mu, stride_nu;
 
     if (mu == 0) {
         step_mu = 1;
@@ -734,7 +735,7 @@ void staples(double *staple, double *U, int spos, int mu, int nu) {
     double temp[X], staple_h[X];
 
     // first staple
-    int pos = D*spos + nu;
+    int64_t pos = D*spos + nu;
     get_link(staple, U, mod(pos, LLENGTH));
 
     pos = D*(spos - mod(spos, stride_nu) + mod(spos + step_nu, stride_nu)) + mu;
@@ -759,14 +760,15 @@ void staples(double *staple, double *U, int spos, int mu, int nu) {
     get_link(temp, U, mod(pos, LLENGTH));
     matmul(staple_h, staple_h, temp);
 
-    for (int i = 0; i < X; i++) {
+    for (int64_t i = 0; i < X; i++) {
         staple[i] += staple_h[i];
     }
+
 }
 
 void link_trace(double *ltr, double *U) {
     double res = 0;
-    for (int i = 0; i < LLENGTH; i++) {
+    for (int64_t i = 0; i < LLENGTH; i++) {
         double tr[2];
         trace(tr, &U[X*i]);
         res += tr[0];
@@ -775,12 +777,12 @@ void link_trace(double *ltr, double *U) {
 }
 
 void transform(double *Up, double *U, double *Om) {
-    int pos, opos, fopos;
-    int offs, period, h;
+    int64_t pos, opos, fopos;
+    int64_t offs, period, h;
     double link[X];
     double omegaL[X];
     double omegaR[X];
-    for (int i = 0; i < LLENGTH; i++) {
+    for (int64_t i = 0; i < LLENGTH; i++) {
         pos = X*i;
         opos = X*(i/D);
         // offs = X*ipow(L,i%D); 
@@ -804,7 +806,7 @@ void transform(double *Up, double *U, double *Om) {
         }
 
         fopos = opos - mod(opos, period) + mod(opos + offs, period);
-        for (int j = 0; j < X; j++) {
+        for (int64_t j = 0; j < X; j++) {
             link[j] = U[pos+j];
             omegaL[j] = Om[opos+j];
             omegaR[j] = Om[mod(fopos+j, OLENGTH)];
@@ -814,7 +816,7 @@ void transform(double *Up, double *U, double *Om) {
         matmul(link,omegaL,link);
         matmul(link,link,omegaR);
 
-        for (int k = 0; k < X; k++) {
+        for (int64_t k = 0; k < X; k++) {
             Up[pos+k] = link[k];
         }
     }
@@ -824,8 +826,7 @@ void gauge_action(double *action, double *U) {
     double plaq[X];
     double sum = 0.0;
     double tr[2];
-    int i = 0;
-    int j = 0, k = 0;
+    int64_t i = 0, j = 0, k = 0;
     // I don't understand 'reduction' yet, but apparently it is needed
     #pragma omp parallel for reduction(+:sum) private(tr, plaq, i, j, k)
     for (i = 0; i < LVOLUME; i++) {
