@@ -7,9 +7,9 @@ void find_nersc_value(char *value, char *label, int label_length, char *header, 
 void make_nersc_header(char *header, int *header_length, double *U, char *label);
 
 int read_scidac(double *U, char *config, char *header, int *header_length);
-/*void write_scidac(double *U, char *out_file, char *header, int header_length);*/
-/*void make_scidac_header(char *header, int *header_length, double *U, char *label);*/
+/*void write_scidac(double *U, char *out_file, char *header, long int header_length);*/
+/*void make_scidac_header(char *header, long int *header_length, double *U, char *label);*/
 
-int checksum(double *U);
+uint32_t checksum(double *U);
 
 #endif // !FILEIO_H

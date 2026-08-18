@@ -24,9 +24,9 @@ typedef struct {
 } measurement_list;
 
 /*typedef struct {*/
-/*    int t;*/
-/*    int b;*/
-/*    int number_of_sources;*/
+/*    long int t;*/
+/*    long int b;*/
+/*    long int number_of_sources;*/
 /*    double *data; // array of measurements, probably 6 doubles*/
 /*} averaged_data;*/
 
@@ -34,12 +34,12 @@ typedef struct {
 measurement_list *create_full_measurement_list(size_t block_size);
 // delete the list
 void delete_measurement_list(measurement_list *list);
-void source_grid(int *pos, int source, int num_sources);
+void source_grid(long int *pos, long int source, long int num_sources);
 measurement_list *read_data_from_file_in_order(char **inputs);
 double *average_sources(measurement_list *list);
 void write_data_to_tsv_file(double *data, char **inputs);
 
-int main(int argc, char *argv[])
+long int main(long int argc, char *argv[])
 {
     if (argc < 9 || argc > 9) {
         printf("Input should look like: \n");
@@ -48,11 +48,11 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    int n = atoi(argv[1]);
+    long int n = atoi(argv[1]);
     double ratio = atof(argv[2]);
-    int numSources = atoi(argv[3]);
-    int b = atoi(argv[4]);
-    int t = atoi(argv[5]);
+    long int numSources = atoi(argv[3]);
+    long int b = atoi(argv[4]);
+    long int t = atoi(argv[5]);
     char *config_number = argv[6];
     char *binary_path = argv[7];
     char *data_dir = argv[8];
@@ -60,21 +60,21 @@ int main(int argc, char *argv[])
     double averaged_data[6] = {0};
     measurement_list *ordered_data = read_data_from_file_in_order(argv);
 
-    for (int s = 0; s<numSources; s++) {
-        int lattice_s;
+    for (long int s = 0; s<numSources; s++) {
+        long int lattice_s;
         source_grid(&lattice_s, s, numSources);
         if (ordered_data->indices[lattice_s] == -1) {
             printf("missing data!\n");
             exit(1);
         }
-        for (int i = 0; i<6; i++) {
+        for (long int i = 0; i<6; i++) {
             averaged_data[i] += ordered_data->measurements[lattice_s][i];
         }
     }
 
     delete_measurement_list(ordered_data);
 
-    for (int i = 0; i<6; i++) {
+    for (long int i = 0; i<6; i++) {
         averaged_data[i] /= numSources;
         printf("%lf ", averaged_data[i]);
     }
@@ -113,14 +113,14 @@ void delete_measurement_list(measurement_list *list) {
     free(list);
 }
 
-void source_grid(int *pos, int source, int num_sources) {
+void source_grid(long int *pos, long int source, long int num_sources) {
 
-    const int little_L = (int)(ceil(pow((num_sources/2),0.25)));
-    const int little_T = 2*little_L;
-    const int fact_L = L/little_L;
-    const int fact_T = T/little_T;
+    const long int little_L = (int)(ceil(pow((num_sources/2),0.25)));
+    const long int little_T = 2*little_L;
+    const long int fact_L = L/little_L;
+    const long int fact_T = T/little_T;
 
-    int src[4];
+    long int src[4];
 
     src[0] = fact_L*(source%little_L);
     src[1] = fact_L*((source/little_L)%little_L);
@@ -140,7 +140,7 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
-        for (int i=0; i<LVOLUME; i++) {
+        for (long int i=0; i<LVOLUME; i++) {
             num_read = 0;
             uint32_t index;
             double measurement[6];
@@ -171,7 +171,7 @@ void write_data_to_tsv_file(double *data, char **inputs) {
 
 
     struct stat buffer;
-    int result = stat(data_path, &buffer);
+    long int result = stat(data_path, &buffer);
 
     FILE *tsv_file;
     tsv_file = fopen(data_path, "a");

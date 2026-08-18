@@ -8,6 +8,7 @@
 #include <sys/resource.h>
 // #include <unistd.h>
 #include <inttypes.h>
+#include <limits.h>
 // #include <gmp.h>
 // #include <mpfr.h>
 #include <math.h>
@@ -17,12 +18,13 @@
 #include "fileIO.h"
 
 #define LENGTH(X) (sizeof X / sizeof X[0])
+#define MAX_SOURCES 1048576 // 2**20
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
 // Creating the structure
 typedef struct {
-    int *indices; // store lattice index for unordered file write
+    uint32_t *indices; // store lattice index for unordered file write
     double **measurements; // array of measurements, NUM_DATAS doubles
     size_t number_of_measurements;
     size_t size;
@@ -33,22 +35,21 @@ typedef struct {
 // compute forward-backward derivative
 void fbdelta(double *result, double *layer, double *Ulayer, int lpos);
 // compute LMN type propagator [add reference]
-void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, 
-                 int tdir, double ratio);
+void tpropLMNnew(double *prop, double *U, int n, long int spos, int mu, 
+		 int width, int mu_e, int esteps, int edir, double ratio);
 // compute transverse links
-void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, 
-                int bsteps, int bdir);
+void trLinksnew(double *prop, double *U, long int spos, int mu, int bmu, 
+                int width, int bsteps, int bdir);
 // create a struct containing dynamic list of measurements
 measurement_list *create_measurement_list(size_t block_size);
 // append a new measurement with lattice index to the list
-int add_measurement_to_list(measurement_list *list, int index, 
+long int add_measurement_to_list(measurement_list *list, long int index, 
                             double *measurement);
 // delete the list
 void delete_measurement_list(measurement_list *list);
-void source_grid(int *pos, int source, int num_sources);
-void compute_observables(double *trace_array, int spos, double *U, int n, 
-                         double ratio, int t, int b,
-                         double *prop_num, double *prop_den);
+void source_grid(int *pos, int *zpos, int mu_r, int source, int num_sources);
+void compute_observables(double *trace_array, int spos, int zspos, double *U, 
+                         int n, double ratio, int t, int b, double *prop_num, const int width);
 double *read_configuration(char *config);
 void delete_configuration(double *V);
 double *random_gauge_transform(double *V);
@@ -57,92 +58,140 @@ int *setup_parallization(int *sizes_extent, int num_sources);
 void create_info_file(char **inputs);
 void write_data_to_file(measurement_list *list, char **inputs);
 measurement_list *read_data_from_file(char **inputs);
-int *get_existing_sources(size_t *number_of_sources, char **inputs);
-int in_source_list(int source, int *source_list, size_t size);
+void get_existing_sources(size_t *number_of_sources, char **inputs, 
+                          uint32_t *existant_sources);
+int in_source_list(uint32_t source, uint32_t *source_list, size_t size);
 int ssl2sa(char *s, char **a); // space-separated list to string array
-
-// void build_string(char *out, char *in[], int length);
+void do_run_for_config(double *V, int n, char **ratioList, int rSize, 
+		       char **bList, int bSize, char **tList, int tSize, 
+		       int nSources, char **inputs);
 
 int main(int argc, char *argv[]) {
+
     if (argc < 9 || argc > 9) {
+	printf("argc = %ld \n", argc);
         printf("Input should look like: \n");
-        printf("%s <n> <ratio list> num_sources <b list> <t list> config_number"
+        printf("%s <n> <ratio list> num_sources <b list>"
+	       "<t list> config_number"
                " config_path data_dir\n", argv[0]);
         exit(1);
     }
 
-    // clock_t begin = clock();
     double begin = omp_get_wtime();
 
     int n = atoi(argv[1]);
-
-    int rSize = ssl2sa(argv[2], NULL);
-    char **ratioList = malloc(rSize*sizeof(char*));
-    ssl2sa(argv[2], ratioList);
-
-    int nSources = atoll(argv[3]);
-
-    int bSize = ssl2sa(argv[4], NULL);
-    char **bList = malloc(bSize*sizeof(char*));
-    ssl2sa(argv[4], bList);
-
-    int tSize = ssl2sa(argv[5], NULL);
-    char **tList = malloc(tSize*sizeof(char*));
-    ssl2sa(argv[5], tList);
-
+    int nSources = atoi(argv[3]);
     char *config_number = argv[6];
     char *config = argv[7];
     char *data_dir = argv[8];
 
+    printf("%s\n", config);
+
     double *V = read_configuration(config);
 
+    // malloc is unnecessary, but doesn't really hurt time
+    int rSize = ssl2sa(argv[2], NULL);
+    char **ratioList = malloc(rSize*sizeof(char*));
+    ssl2sa(argv[2], ratioList);
+    int bSize = ssl2sa(argv[4], NULL);
+    char **bList = malloc(bSize*sizeof(char*));
+    ssl2sa(argv[4], bList);
+    int tSize = ssl2sa(argv[5], NULL);
+    char **tList = malloc(tSize*sizeof(char*));
+    ssl2sa(argv[5], tList);
 
-    // change triple for-loop to single loop later
+    do_run_for_config(V, n, ratioList, rSize, bList, bSize, 
+	       	      tList, tSize, nSources, argv);
+
+
+    // uncomment for gauge invariance check
+    // random_gauge_transform(V);
+    // do_run_for_config(V, n, ratioList, rSize, bList, bSize, 
+    //                   tList, tSize, nSources, argv);
+
+
+    // Clean this up
     for (int i = 0; i < rSize; i++) {
+        free(ratioList[i]);
+    }
     for (int j = 0; j < bSize; j++) {
+        free(bList[j]);
+    }
     for (int k = 0; k < tSize; k++) {
+        free(tList[k]);
+    }
+    free(ratioList);
+    free(bList);
+    free(tList);
+
+    delete_configuration(V);
+
+    double end = omp_get_wtime();
+    double time_spent = end - begin;
+    printf("Elapsed time: %lfs\n", time_spent);
+
+    return 0;
+}
+
+void do_run_for_config(double *V, int n, char **ratioList, int rSize, 
+			char **bList, int bSize, char **tList, int tSize, 
+			int nSources, char **inputs) {
+
+    // setup parallelization
+    int sizes_extent;
+    int *sizes = setup_parallization(&sizes_extent, nSources);
+
+    // allocate memory for this here so the so we're not doing it every iteration
+    // also doing it on the heap so the stack doesn't blow up
+    // this could in pinciple get very large
+    uint32_t *existant_sources;
+    existant_sources = (uint32_t*)malloc(MAX_SOURCES * sizeof(uint32_t));
+
+    // there is nothing wrong with a triple for loop when the situation demands it
+    // don't be ashamed
+    for (int i = 0; i < rSize; i++) { // loop through ratio values
+    for (int j = 0; j < bSize; j++) { // loop through b_perp values
+    for (int k = 0; k < tSize; k++) { // loop through time values
 
         char *ratioStr = ratioList[i];
         char *bStr = bList[j];
         char *tStr = tList[k];
-        char *inargs[] = { argv[0], argv[1], ratioStr, argv[3], bStr, tStr, 
-                            argv[6], argv[7], argv[8] };
+        char *inargs[] = { inputs[0], inputs[1], ratioStr, inputs[3], bStr, tStr, 
+                           inputs[6], inputs[7], inputs[8] };
         
         double ratio = atof(ratioStr);
         int b = atoll(bStr);
         int t = atoll(tStr);
-        printf("Calculating for %lf, %d, %d\n", ratio, b, t);
 
         create_info_file(inargs); // if it doesn't already exist
 
         size_t existantSourceNumber; 
-        int *existantSources = 
-            get_existing_sources(&existantSourceNumber, inargs);
+        get_existing_sources(&existantSourceNumber, inargs, existant_sources);
 
-        // setup parallelization // move this outside loops, global variable
-        int sizes_extent;
-        int *sizes = setup_parallization(&sizes_extent, nSources);
+        // printf("begin parallel stuff\n");
 
+        // I split up the work myself to do the parallelization, but that is probably unnecessary
+        // openmp can handle this by itself and I'm probably just adding more overhead
+        //
         #pragma omp parallel for
         for (int parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
 
-            // can't remember why i was making copies, but it doesn't seem to help
-            // and uses a lot more memory
-            // double *U = copy_configuration(V);
             measurement_list *data_list = 
                 create_measurement_list(nSources/sizes_extent+1);
 
-            // propagators
-            double *prop_num = (double*)calloc(OLENGTH, sizeof(double));
-            double *prop_den = (double*)calloc(OLENGTH, sizeof(double));
+            // propagator, this is just an Lx1 array of 3x3 matrices, we don't need anything bigger for this
+            const int width = T;
+            int mu_r = mu_t;
+            double prop_num[width*X];
 
             for (int s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
 
                 // map source index to lattice index
-                int lattice_s;
-                source_grid(&lattice_s, s, nSources);
+                int lattice_s, lattice_zs;
+                source_grid(&lattice_s, &lattice_zs, mu_r, s, nSources);
+
                 // check if source has already been measured
-                if (in_source_list(lattice_s, existantSources, 
+                if (in_source_list(lattice_s, existant_sources, 
                                    existantSourceNumber) != 0) {
                     continue;
                 }
@@ -150,8 +199,11 @@ int main(int argc, char *argv[]) {
                 double trace_array[NUM_DATAS];
 
                 // here is where the physics happens
-                compute_observables(trace_array, lattice_s, V, n, ratio, t, b, 
-                                    prop_num, prop_den);
+                compute_observables(trace_array, lattice_s, lattice_zs, V, n, ratio, t, b, 
+                                    prop_num, width);
+
+                // uncomment for checking output
+                // printf("%d, %lf, %lf\n", s, trace_array[0], trace_array[1]);
 
                 if(add_measurement_to_list(data_list, 
                                            lattice_s, trace_array) != 0) {
@@ -168,44 +220,18 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            free(prop_num);
-            free(prop_den);
-
             #pragma omp critical
             write_data_to_file(data_list, inargs);
             delete_measurement_list(data_list);
-            // delete_configuration(U);
         }
         #pragma omp barrier
-
-        free(sizes);
-        free(existantSources);
 
     } // triple
     } // for
     } // loop
 
-    delete_configuration(V);
-
-    // Clean this up
-    for (int i = 0; i < rSize; i++) {
-        free(ratioList[i]);
-    }
-    for (int j = 0; j < bSize; j++) {
-        free(bList[j]);
-    }
-    for (int k = 0; k < tSize; k++) {
-        free(tList[k]);
-    }
-    free(ratioList);
-    free(bList);
-    free(tList);
-
-    double end = omp_get_wtime();
-    double time_spent = end - begin;
-    printf("Elapsed time: %lfs\n", time_spent);
-
-    return 0;
+    free(existant_sources);
+    free(sizes);
 }
 
 void fbdelta(double *result, double *layer, double *Ulayer, int lpos) {
@@ -241,40 +267,38 @@ void fbdelta(double *result, double *layer, double *Ulayer, int lpos) {
     matmul(result, coefm, result);
 }
 
-void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps, 
-                 int tdir, double ratio) {
+void tpropLMNnew(double *prop, double *U, int n, long int spos, int mu, 
+		 int width, int mu_e, int esteps, int edir, double ratio) {
 
     // this function is based on a result in arXiv:hep-lat/9205007
     //
     // need to add a description of variables and constants
+    //
 
-    int step = ipow(L,mu); // mu=0,1,2,3
-    int period = L*step;
-    int rpos = mod(spos/step, L);
+    long int estep = ipow(L,mu_e); // since T is the last dimension, it won't effect the step size for any direction
+    long int eperiod = L*estep;
+
+    long int step = ipow(L,mu); // mu=0,1,2,3 // this one stays as L, it is the step size
+    long int period = width*step;
+
+    long int rpos = mod(spos/step, width);
     // pull the WL direction back to the edge so
     // we don't have to worry about boundaries
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
-    // allocate memory for layer and helper array
-    // double *layer, *helper, *Ulayer;
-    // layer = (double*)cal  loc(L*X, sizeof(double));
-    // helper = (double*)cal  loc(L*X, sizeof(double));
-    // Ulayer = (double*)cal  loc(L*X, sizeof(double));
-
-    double layer[L*X];
-    double helper[L*X];
-    double Ulayer[L*X];
+    double layer[width*X];
+    double helper[width*X];
+    double Ulayer[width*X];
 
     // fill Ulayer for first use
-    int l;
-    for (l = 0; l < L; l++) {
+    long int l;
+    for (l = 0; l < width; l++) {
         memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X);
     }
 
-
     // build coefficient matrix, factor of 'i' accounted for 
     // since odd indexes represent the imaginary part
-    double coef = (double)tdir * ratio/(2*n);
+    double coef = (double)edir * ratio/(2*n);
     double coefm[X];
     memset(coefm, 0, sizeof(coefm));
     coefm[1] = coef;  // 1, 9, 17 correspond to the imaginary
@@ -286,120 +310,101 @@ void tpropLMNnew(double *prop, double *U, int n, int spos, int mu, int tsteps,
     double Ut[X];
 
     // iterators
-    int i, j, k, tn;
-    for (i = 0; i != tsteps; i++) {
+    long int i, j, k, tn;
+    for (i = 0; i != esteps; i++) {
 
-        for (l = 0; l < L; l++) {
-            // step variable determines which space direction we are using
-            // for our Wilson line direction
-            memcpy(&layer[X*l], &prop[X*(spos+step*l)], sizeof(double)*X);
-        }
-        memcpy(helper, layer, sizeof(double)*L*X);
+        memcpy(layer, prop, sizeof(double)*width*X);
+        memcpy(helper, layer, sizeof(double)*width*X);
 
         // (1-H0/2)^n |_tprev
         tn = n;
         while (tn--) {
-            for (j = 0; j < L; j++) { // scan across (x,y,z) direction
+            for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
                 fbdelta(fbder, layer, Ulayer, j); // fwd-bwd derivative
                 matmul(update,coefm,fbder);
                 for (k = 0; k < X; k++) {
                     helper[X*j+k] += update[k];
                 }
             }
-            memcpy(layer, helper, sizeof(double)*L*X);
+            memcpy(layer, helper, sizeof(double)*width*X);
         }
 
-        // multiply time links if tdir = +1
+        // multiply time links if edir = +1
         // U^+(tprev)
-        if (tdir == 1) {
-            for(j = 0; j < L; j++) {
-                // X*D*spos+X*3+X*D*j
-                get_link(Ut,U,D*(spos+step*j)+mu_t);
+        if (edir == 1) {
+            for(j = 0; j < width; j++) {
+                get_link(Ut,U,D*(spos+step*j)+mu_e);
                 matmul(&layer[X*j],&layer[X*j],Ut);
             }
         }
 
-        // prepare spos for next time slice
-        spos = mod(spos + tdir*LCUBE, LVOLUME);
+        // prepare spos for next evol slice
+        // spos = mod(spos + edir*estep, LVOLUME);
+    	spos = spos - mod(spos, eperiod) + mod(spos+estep*edir, eperiod);
 
-        // multiply time links if tdir = -1
+        // multiply time links if edir = -1
         // U^+(tprev)
-        if (tdir == -1) {
-            for(j = 0; j < L; j++) {
-                get_link(Ut,U,D*(spos+step*j)+mu_t);
+        if (edir == -1) {
+            for(j = 0; j < width; j++) {
+                get_link(Ut,U,D*(spos+step*j)+mu_e);
                 adjoint(Ut,Ut);
                 matmul(&layer[X*j],&layer[X*j],Ut);
             }
         }
 
         // update helper array for next loop
-        memcpy(helper, layer, sizeof(double)*L*X);
+        memcpy(helper, layer, sizeof(double)*width*X);
 
         // update Ulayer for next loop
-        for (l = 0; l < L; l++) {
+        for (l = 0; l < width; l++) {
             memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X);
         }
 
         // (1-H0/2)^n |_t
         tn = n;
         while (tn--) {
-            for (j = 0; j < L; j++) { // scan across x direction
+            for (j = 0; j < width; j++) { // scan across x direction
                 fbdelta(fbder, layer, Ulayer, j); // fwd-bwd derivative
                 matmul(update,coefm,fbder);
                 for (k = 0; k < X; k++) {
                     helper[X*j+k] += update[k];
                 }
             }
-            memcpy(layer, helper, sizeof(double)*L*X);
+            memcpy(layer, helper, sizeof(double)*width*X);
         }
 
-        // update propagator
-        for (l = 0; l < L; l++) {
-            // step variable determines which space direction we are using
-            // for our Wilson line direction
-            memcpy(&prop[X*(spos+step*l)], &layer[X*l], sizeof(double)*X);
-        }
+	memcpy(prop, layer, sizeof(double)*width*X);
     }
-
-    // free(layer);
-    // free(helper);
-    // free(Ulayer);
 }
 
 
-void trLinksnew(double *prop, double *U, int spos, int mu, int bmu, 
-                int bsteps, int bdir) {
+void trLinksnew(double *prop, double *U, long int spos, int mu, int width,
+		int bmu, int bsteps, int bdir) {
 
-    int step = ipow(L,mu);
-    int period = L*step;
-    int rpos = mod(spos/step, L);
-    int bstep = ipow(L,bmu);
-    int bperiod = L*bstep; // this will not work if we want the time direction
+    long int step = ipow(L,mu);
+    long int period = width*step;
+    long int rpos = mod(spos/step, width);
+
+    long int bstep = ipow(L,bmu);
+    long int bperiod = L*bstep; // this will not work if we want the time direction
                           // to be our bdir but why would we want that?
 
     // pull the WL direction back to the edge so
     // we don't have to worry about boundaries
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
-    // double *layer; // chocolate cake
-    // layer = (double*)calloc(L*X, sizeof(double));
-
-    double layer[L*X]; // chocolate cake
+    double layer[width*X]; // chocolate cake
 
     double Ub[X];
 
     // iterators
-    int i, j, l;
+    long int i, j, l;
     for (i = 0; i != bsteps; i++) { 
 
-        for (l = 0; l < L; l++) {
-            // step variable determines which space direction we are using
-            // for our Wilson line direction
-            memcpy(&layer[X*l], &prop[X*(spos+step*l)], sizeof(double)*X);
-        }
+        memcpy(layer, prop, sizeof(double)*width*X);
 
         if (bdir == 1) {
-            for(j = 0; j < L; j++) {
+            for(j = 0; j < width; j++) {
                 get_link(Ub,U,D*(spos+step*j)+bmu);
                 matmul(&layer[X*j],&layer[X*j],Ub);
             }
@@ -409,22 +414,15 @@ void trLinksnew(double *prop, double *U, int spos, int mu, int bmu,
         spos = spos - mod(spos, bperiod) + mod(spos + bstep*bdir, bperiod);
 
         if (bdir == -1) {
-            for(j = 0; j < L; j++) {
+            for(j = 0; j < width; j++) {
                 get_link(Ub,U,D*(spos+step*j)+bmu);
                 adjoint(Ub,Ub);
                 matmul(&layer[X*j],&layer[X*j],Ub);
             }
         }
 
-        // update propagator
-        for (l = 0; l < L; l++) {
-            // step variable determines which space direction we are using
-            // for our Wilson line direction
-            memcpy(&prop[X*(spos+step*l)], &layer[X*l], sizeof(double)*X);
-        }
+        memcpy(prop, layer, sizeof(double)*width*X);
     }
-
-    // free(layer);
 }
 
 measurement_list *create_measurement_list(size_t block_size) {
@@ -433,8 +431,8 @@ measurement_list *create_measurement_list(size_t block_size) {
         list->number_of_measurements = 0;
         list->size = block_size;
         list->block_size = block_size;
-        list->indices = (int*)malloc(sizeof(int*)*block_size);
-        list->measurements = (double**)malloc(sizeof(double**)*block_size);
+        list->indices = (uint32_t*)malloc(sizeof(uint32_t)*block_size);
+        list->measurements = (double**)malloc(sizeof(double*)*block_size);
         if (list->indices == NULL || list->measurements == NULL) {
             free(list);
             return NULL;
@@ -443,7 +441,7 @@ measurement_list *create_measurement_list(size_t block_size) {
     return list;
 } 
 
-int add_measurement_to_list(measurement_list *list, int index, 
+long int add_measurement_to_list(measurement_list *list, long int index, 
                             double *measurement) {
     size_t num_measurements = list->number_of_measurements;
     /*double mm[NUM_DATAS];*/
@@ -451,14 +449,14 @@ int add_measurement_to_list(measurement_list *list, int index,
 
     if (num_measurements >= list->size) {
         size_t new_size = list->size + list->block_size;
-        void *new_indices = realloc(list->indices, sizeof(int)*new_size);
+        void *new_indices = realloc(list->indices, sizeof(uint32_t)*new_size);
         void *new_measurements = 
             realloc(list->measurements, sizeof(double*)*new_size);
         if (new_indices == NULL || new_measurements == NULL) {
             return 1;
         } else {
             list->size = new_size;
-            list->indices = (int*)new_indices;
+            list->indices = (uint32_t*)new_indices;
             list->measurements = (double**)new_measurements;
         }
     }
@@ -481,7 +479,7 @@ void delete_measurement_list(measurement_list *list) {
     free(list);
 }
 
-void source_grid(int *pos, int source, int num_sources) {
+void source_grid(int *pos, int *zpos, int mu_r, int source, int num_sources) {
 
     const int little_L = (int)(ceil(pow((num_sources/2),0.25)));
     /*const int little_L = pow((num_sources/2),0.25)+1;*/
@@ -496,43 +494,58 @@ void source_grid(int *pos, int source, int num_sources) {
     src[2] = fact_L*(((source/little_L)/little_L)%little_L);
     src[3] = fact_T*((((source/little_L)/little_L)/little_L)%little_T);
 
+    *zpos = src[mu_r]; // for propagator which is one dimensional array in our case
     *pos = src[3]*LCUBE + src[2]*LSQUARE + src[1]*L + src[0];
 }
 
-void compute_observables(double *trace_array, int spos, double *U, int n, 
+void compute_observables(double *trace_array, int spos, int zspos, 
+                         double *U, int n, 
                          double ratio, int t, int b, 
-                         double *prop_num, double *prop_den){
+                         double *prop_num, const int width){
 
-    int srcp = X*spos;
+    // long int srcp = X*spos;
+    int zsrcp = X*zspos;
     double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
     // choose directions for loop
-    int mu_r = mu_z;
+    int mu_e = mu_z;
+    int mu_r = mu_t; // change to mu_t for z evolve case
     int mu_b = mu_x;
-    if (mu_b == mu_t) {
-        printf("Invalid direction. Exiting.\n");
-        exit(1);
-    }
-    int step = ipow(L,mu_b);
-    int period = L*step; //only works if transverse direction is not time
-    int tdir, bdir;
+    // if (mu_b == mu_t) {
+    //     printf("Invalid direction. Exiting.\n");
+    //     exit(1);
+    // }
 
-    memset(prop_num, 0, sizeof(double)*OLENGTH);
-    memcpy(&prop_num[srcp],source,sizeof(double)*X);
+    long int bstep = ipow(L,mu_b);
+    long int bperiod = L*bstep; // period for b direction, not generalized to mu_b=mu_t
+    long int estep = ipow(L,mu_e);
+    long int eperiod = width*estep;
+    int edir, bdir; // edir is direction of evolution, usually t or z direction
 
-    // Numerator
-    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, ratio);
-    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=1);
-    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, ratio);
-    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=1, -ratio);
-    spos = mod(spos + LCUBE*t*tdir, LVOLUME);
-    trLinksnew(prop_num, U, spos, mu_r, mu_b, b, bdir=-1);
-    spos = spos - mod(spos, period) + mod(spos+step*b*bdir, period);
-    tpropLMNnew(prop_num, U, n, spos, mu_r, t, tdir=-1, -ratio);
+    memset(prop_num, 0, sizeof(double)*width*X);
+    memcpy(&prop_num[zsrcp],source,sizeof(double)*X);
 
-    trace(&trace_array[0], &prop_num[srcp]);
+    // // Numerator
+    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=1, ratio);
+    // spos = mod(spos + LSQUARE*t*edir, LVOLUME);
+    spos = spos - mod(spos, eperiod) + mod(spos+estep*t*edir, eperiod);
+
+    trLinksnew(prop_num, U, spos, mu_r, width, mu_b, b, bdir=1);
+    spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
+
+    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=-1, ratio);
+    // spos = mod(spos + LSQUARE*t*edir, LVOLUME);
+    spos = spos - mod(spos, eperiod) + mod(spos+estep*t*edir, eperiod);
+
+    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=-1, -ratio);
+    // spos = mod(spos + LSQUARE*t*edir, LVOLUME);
+    spos = spos - mod(spos, eperiod) + mod(spos+estep*t*edir, eperiod);
+
+    trLinksnew(prop_num, U, spos, mu_r, width, mu_b, b, bdir=-1);
+    spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
+
+    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=1, -ratio);
+
+    trace(&trace_array[0], &prop_num[zsrcp]);
 }
 
 double *read_configuration(char *config) {
@@ -541,7 +554,7 @@ double *read_configuration(char *config) {
     V = (double*)calloc(CLENGTH, sizeof(double));
 
     char header[1000];
-    bzero(header, 600*sizeof(char));
+    bzero(header, 1000*sizeof(char));
     int header_length = 0;
 
     if (read_nersc(V, config, header, &header_length)!=0) {
@@ -606,17 +619,17 @@ void create_info_file(char **inputs) {
     struct stat buffer;
     if (stat(info_path, &buffer) != 0) {
         FILE *info_file;
-        info_file = fopen(info_path, "w");
+        info_file = fopen(info_path, "a");
 
         /*fprintf(info_file, header);*/
-        fprintf(info_file, "Layout: (int)(NUM_DATAS*double)\n");
-        fprintf(info_file, "cols:\tnum.real\tnum.imag\tdenA.real\t"
-                           "denA.imag\tdenB.real\tdenB.imag\n");
+        fprintf(info_file, "Layout: (uint32_t)(NUM_DATAS*double)\n");
+        fprintf(info_file, "cols:\tnum.real\tnum.imag\n");
         fprintf(info_file, "n=%s\n",inputs[1]);
         fprintf(info_file, "r=%s\n",inputs[2]);
         fprintf(info_file, "b=%s\n",inputs[4]);
         fprintf(info_file, "t=%s\n",inputs[5]);
         fprintf(info_file, "c=%s\n",inputs[6]);
+        fprintf(info_file, "\n");
         /*fprintf(info_file, "index = b + ncols * t\n");*/
 
         fclose(info_file);
@@ -636,8 +649,8 @@ void write_data_to_file(measurement_list *list, char **inputs) {
 
     FILE *data_file;
     data_file = fopen(data_path, "ab");
-    for (int i = 0; i < list->number_of_measurements; i++) {
-        fwrite(&list->indices[i], sizeof(int), 1, data_file);
+    for (long int i = 0; i < list->number_of_measurements; i++) {
+        fwrite(&list->indices[i], sizeof(uint32_t), 1, data_file);
         fwrite(list->measurements[i], sizeof(double), NUM_DATAS, data_file);
     }
     fclose(data_file);
@@ -654,12 +667,12 @@ measurement_list *read_data_from_file(char **inputs) {
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
-        for (int i=0; i<LVOLUME; i++) {
+        for (long int i=0; i<LVOLUME; i++) {
             num_read = 0;
-            int index;
+            uint32_t index;
             double measurement[NUM_DATAS];
             /*double mm[NUM_DATAS];*/
-            num_read += fread(&index, sizeof(int), 1, data_file);
+            num_read += fread(&index, sizeof(uint32_t), 1, data_file);
             num_read += fread(measurement, sizeof(double), NUM_DATAS, data_file);
             /*memcpy(mm, measurement, NUM_DATAS*sizeof(double));*/
             if (num_read == NUM_DATAS+1) {
@@ -674,10 +687,10 @@ measurement_list *read_data_from_file(char **inputs) {
     return list;
 }
 
-int *get_existing_sources(size_t *number_of_sources, char **inputs) {
+void get_existing_sources(size_t *number_of_sources, char **inputs, uint32_t *existant_sources) {
     measurement_list *list = read_data_from_file(inputs);
-    int *existant_sources = 
-        malloc(sizeof(*existant_sources) * list->number_of_measurements);
+    // uint32_t *existant_sources = 
+    //     malloc(sizeof(*existant_sources) * list->number_of_measurements);
     /*if (existant_sources == NULL) {*/
     /*    return 0;*/
     /*}*/
@@ -689,11 +702,9 @@ int *get_existing_sources(size_t *number_of_sources, char **inputs) {
     }
     *number_of_sources = list->number_of_measurements;
     delete_measurement_list(list);
-
-    return existant_sources;
 }
 
-int in_source_list(int source, int *source_list, size_t size) {
+int in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
     for (size_t i = 0; i < size; i++) {
         if (source == source_list[i]) {
             return 1;
