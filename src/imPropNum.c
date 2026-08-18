@@ -177,8 +177,8 @@ void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize,
                 create_measurement_list(nSources/sizes_extent+1);
 
             // propagator, this is just an Lx1 array of 3x3 matrices, we don't need anything bigger for this
-            const int32_t width = T;
-            int32_t mu_r = mu_t;
+            const int32_t width = L;
+            int32_t mu_r = mu_z; // TODO: this is defined in two different locations, fix this
             double prop_num[width*X];
 
             for (int32_t s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
@@ -198,6 +198,9 @@ void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize,
                 // here is where the physics happens
                 compute_observables(trace_array, lattice_s, lattice_zs, V, n, ratio, t, b, 
                                     prop_num, width);
+
+                // print result of compute_observables
+                printf("%d, %d, %lf, %lf\n", parallel_s, s, trace_array[0], trace_array[1]);
 
                 // uncomment for checking output
                 // printf("%d, %lf, %lf\n", s, trace_array[0], trace_array[1]);
@@ -504,8 +507,8 @@ void compute_observables(double *trace_array, int32_t spos, int32_t zspos,
     int32_t zsrcp = X*zspos;
     double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
     // choose directions for loop
-    int32_t mu_e = mu_z;
-    int32_t mu_r = mu_t; // change to mu_t for z evolve case
+    int32_t mu_e = mu_t;
+    int32_t mu_r = mu_z; // change to mu_t for z evolve case
     int32_t mu_b = mu_x;
     // if (mu_b == mu_t) {
     //     printf("Invalid direction. Exiting.\n");
@@ -533,14 +536,14 @@ void compute_observables(double *trace_array, int32_t spos, int32_t zspos,
     // spos = mod(spos + LSQUARE*t*edir, LVOLUME);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*edir, eperiod);
 
-    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=-1, -ratio);
+    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=1, -ratio);
     // spos = mod(spos + LSQUARE*t*edir, LVOLUME);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*edir, eperiod);
 
     trLinksnew(prop_num, U, spos, mu_r, width, mu_b, b, bdir=-1);
     spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
 
-    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=1, -ratio);
+    tpropLMNnew(prop_num, U, n, spos, mu_r, width, mu_e, t, edir=-1, -ratio);
 
     trace(&trace_array[0], &prop_num[zsrcp]);
 }
