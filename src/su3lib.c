@@ -18,8 +18,36 @@
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
-void rnd_config(double *U) {
+void unit_config(double *U) {
+    // make a unit gauge configuration
+    for (int64_t i = 0; i < LLENGTH; ++i) {
+        int64_t p = X*i; // position in big array for config
+        // printf("%ld\n", p);
 
+        U[p]    = 1.0;
+        U[p+1]  = 0.0;
+        U[p+2]  = 0.0;
+        U[p+3]  = 0.0;
+        U[p+4]  = 0.0;
+        U[p+5]  = 0.0;
+
+        U[p+6]  = 0.0;
+        U[p+7]  = 0.0;
+        U[p+8]  = 1.0;
+        U[p+9]  = 0.0;
+        U[p+10] = 0.0;
+        U[p+11] = 0.0;
+
+        U[p+12] = 0.0;
+        U[p+13] = 0.0;
+        U[p+14] = 0.0;
+        U[p+15] = 0.0;
+        U[p+16] = 1.0;
+        U[p+17] = 0.0;
+    }
+}
+
+void rnd_config(double *U) {
     // make a random gauge configuration
     // double U[CLENGTH];
     double temp[S_X];
@@ -85,11 +113,9 @@ void rnd_config(double *U) {
         U[p+17] = - (U[p]*U[p+9] + U[p+1]*U[p+8])
                   + (U[p+2]*U[p+7] + U[p+3]*U[p+6]); // im(u1.v2-u2.v1)
     }
-
 }
 
 void rnd_gauge_tr(double *Omega) {
-
     // make a random gauge transformation matrix
     // double Omega[OLENGTH];
     double temp[S_X];
@@ -155,7 +181,6 @@ void rnd_gauge_tr(double *Omega) {
         Omega[p+17] = - (Omega[p]*Omega[p+9] + Omega[p+1]*Omega[p+8])
                       + (Omega[p+2]*Omega[p+7] + Omega[p+3]*Omega[p+6]); // im(u1.v2-u2.v1)
     }
-
 }
 
 void get_index(int64_t i) {
@@ -229,15 +254,15 @@ void matmul(double *z, double *x, double *y) {
     //     v[i] = y[i];
     // }
 
-    z[0]  = u[0]*v[0]   - u[1]*v[1]   + u[2]*v[6]          // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]
+    z[0]  = u[0]*v[0]   - u[1]*v[1]   + u[2]*v[6]          // m[0] + i m[1]     m[2] + i m[3]     m[4] + i m[5]
           - u[3]*v[7]   + u[4]*v[12]  - u[5]*v[13];        // 
     z[1]  = u[0]*v[1]   + u[1]*v[0]   + u[2]*v[7]          // 
           + u[3]*v[6]   + u[4]*v[13]  + u[5]*v[12];        // 
-    z[2]  = u[0]*v[2]   - u[1]*v[3]   + u[2]*v[8]          // m[6] + i m[7]         m[8] + i m[9]         m[10] + i m[11]
+    z[2]  = u[0]*v[2]   - u[1]*v[3]   + u[2]*v[8]          // m[6] + i m[7]     m[8] + i m[9]     m[10] + i m[11]
           - u[3]*v[9]   + u[4]*v[14]  - u[5]*v[15];        // 
     z[3]  = u[0]*v[3]   + u[1]*v[2]   + u[2]*v[9]          // 
           + u[3]*v[8]   + u[4]*v[15]  + u[5]*v[14];        // 
-    z[4]  = u[0]*v[4]   - u[1]*v[5]   + u[2]*v[10]         // m[12] + i m[13]       m[14] + i m[15]       m[16] + i m[17]
+    z[4]  = u[0]*v[4]   - u[1]*v[5]   + u[2]*v[10]         // m[12] + i m[13]   m[14] + i m[15]   m[16] + i m[17]
           - u[3]*v[11]  + u[4]*v[16]  - u[5]*v[17];
     z[5]  = u[0]*v[5]   + u[1]*v[4]   + u[2]*v[11]
           + u[3]*v[10]  + u[4]*v[17]  + u[5]*v[16];
@@ -265,28 +290,27 @@ void matmul(double *z, double *x, double *y) {
           - u[15]*v[11] + u[16]*v[16] - u[17]*v[17];
     z[17] = u[12]*v[5]  + u[13]*v[4]  + u[14]*v[11]
           + u[15]*v[10] + u[16]*v[17] + u[17]*v[16];
-
 }
 
 void cmmul(double *z, double c, double *x) {
-    z[0]  = c*x[0];
-    z[1]  = c*x[1];
-    z[2]  = c*x[2];
-    z[3]  = c*x[3];
-    z[4]  = c*x[4];
-    z[5]  = c*x[5];
-    z[6]  = c*x[6];
-    z[7]  = c*x[7];
-    z[8]  = c*x[8];
-    z[9]  = c*x[9];
-    z[10] = c*x[10];
-    z[11] = c*x[11];
-    z[12] = c*x[12];
-    z[13] = c*x[13];
-    z[14] = c*x[14];
-    z[15] = c*x[15];
-    z[16] = c*x[16];
-    z[17] = c*x[17];
+    for (size_t i = 0; i < X; ++i) {
+        z[i] = c*x[i];
+    }
+}
+
+void immul(double *z, double c, double *x) {
+    // multiply an imaginary number by a complex matrix
+    for (size_t i = 0; i < X/2; ++i) {
+        size_t j = 2*i;
+        z[j]   = -c*z[j+1]; // real 
+        z[j+1] = c*z[j]; // imag
+    }
+}
+
+void matadd(double *z, double *x, double *y) {
+    for (size_t i = 0; i < X; ++i) {
+        z[i] = x[i] + y[i];
+    }
 }
 
 void adjoint(double *xc, double *x) {
@@ -334,7 +358,6 @@ void trace(double *result, double *matrix) {
 }
 
 void det(double *result, double *m) {
-    
     double min1_real, min2_real, min3_real;
     double min1_imag, min2_imag, min3_imag;
 
@@ -439,7 +462,6 @@ void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
 }
 
 void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu) {
-
     memset(clover, 0, X*sizeof(double));
 
     double temp[X], leaf[X];
@@ -586,7 +608,6 @@ void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu)
 }
 
 void top_charge_density(double *topo_charge_density, double *U, int64_t spos) {
-
     double tcharge[2] = {0};
     // memcpy(tcharge, topo_charge, 2*sizeof(double));
     // memset(tcharge, 0, 2*sizeof(double));
@@ -624,7 +645,6 @@ void top_charge_density(double *topo_charge_density, double *U, int64_t spos) {
 }
 
 void top_charge(double *topo_charge, double *U) {
-
     double tcharge[2] = {0};
 
     #pragma omp parallel for reduction(+: tcharge)
@@ -763,7 +783,6 @@ void staples(double *staple, double *U, int64_t spos, int64_t mu, int64_t nu) {
     for (int64_t i = 0; i < X; i++) {
         staple[i] += staple_h[i];
     }
-
 }
 
 void link_trace(double *ltr, double *U) {

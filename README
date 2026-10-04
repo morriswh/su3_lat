@@ -1,0 +1,5 @@
+This library is for doing pure glue calculations on a lattice of arbitrary size.
+Currently you have to recompile in order to change the lattice size.
+There is also code for doing APE smearing.
+
+In its current form, this is not really meant to be shared with anyone.

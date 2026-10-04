@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stddef.h>
 #include "sizes.h"
 
 const double beta = 0.3; // 1/g^2
@@ -17,6 +18,6 @@ const int64_t LLENGTH   = T*L*L*L*D;     //= 8388608;   //
 const int64_t LVOLUME   = T*L*L*L;       //= 2097152;   // 
 const int64_t LCUBE     = L*L*L;         //= 32768;     // 
 const int64_t LSQUARE   = L*L;           //= 1024;      // 
-const int64_t NUM_DATAS = 2;
+const size_t NUM_DATAS = 2;
 
 

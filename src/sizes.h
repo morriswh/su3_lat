@@ -17,6 +17,6 @@ extern const int64_t LLENGTH;
 extern const int64_t LVOLUME;
 extern const int64_t LCUBE;
 extern const int64_t LSQUARE;
-extern const int64_t NUM_DATAS;
+extern const size_t NUM_DATAS;
 
 #endif // !SIZES_H

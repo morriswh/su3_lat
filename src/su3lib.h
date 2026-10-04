@@ -9,6 +9,8 @@ int64_t ipow(int64_t base, int64_t exp); // exponentiation by squaring
 int64_t mod(int64_t value, int64_t period); // modulo function
 void matmul(double *z, double *x, double *y); // product of two su(3) matrices
 void cmmul(double *z, double c, double *x); // scalar times su(3) matrix
+void immul(double *z, double c, double *x); // imaginary scalar times su(3) matrix
+void matadd(double *z, double *x, double *y); // sum of two su(3) matrices
 void adjoint(double *xc, double *x); // get conjugate transpose
 void print_link(double *link); // print64_t gauge link, needs cosmetic attention
 void trace(double *result, double *matrix); // trace of su(3) matrix
@@ -24,6 +26,7 @@ void directional_sum(double *lattice, int64_t *directions,
 void staples(double *staple, double *U, int64_t spos, int64_t mu, int64_t nu); // staple
 void link_trace(double *ltr, double *U);
 void gauge_action(double *action, double *U);
+void unit_config(double *U);
 void rnd_config(double *U);
 void rnd_gauge_tr(double *Omega);
 
