@@ -8,7 +8,7 @@ const int64_t NC = 3;
 const int64_t T = 64; // lattice temporal size
 const int64_t L = 32; // lattice spacial size
 const int64_t D = 4; // spacetime dimensions
-const int64_t X = 18; // SU(3) gauge theory, 18 reals
+const int32_t X = 18; // SU(3) gauge theory, 18 reals
 const int64_t S_X = 12; // for short storage
 const int64_t CLENGTH   = T*L*L*L*D*X;   //= 150994944; //  
 const int64_t S_CLENGTH = T*L*L*L*D*S_X; //= 100663296; // 

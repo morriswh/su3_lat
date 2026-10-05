@@ -75,11 +75,11 @@ int64_t main(int64_t argc, char *argv[])
 
     delete_measurement_list(ordered_data);
 
-    // for (int64_t i = 0; i<2; i++) {
-    //     averaged_data[i] /= numSources;
-    //     printf("%lf ", averaged_data[i]);
-    // }
-    // printf("\n");
+    for (int64_t i = 0; i<2; i++) {
+        averaged_data[i] /= (double)numSources;
+        printf("%lf ", averaged_data[i]);
+    }
+    printf("\n");
 
     write_data_to_tsv_file(averaged_data, argv);
 
@@ -115,7 +115,6 @@ void delete_measurement_list(measurement_list *list) {
 }
 
 void source_grid(int64_t *pos, int64_t source, int64_t num_sources) {
-
     if ( num_sources == 1 ) {
         *pos = 0;
     } else {
@@ -138,7 +137,6 @@ void source_grid(int64_t *pos, int64_t source, int64_t num_sources) {
 }
 
 measurement_list *read_data_from_file_in_order(char **inputs) {
-
     measurement_list *list = create_full_measurement_list(LVOLUME);
     char *data_path = inputs[7];
 
@@ -170,7 +168,6 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
 }
 
 void write_data_to_tsv_file(double *data, char **inputs) {
-
     // code to write to file
     char data_path[200];
     sprintf(data_path, "%s/n%ss%sc%s.tsv", 
@@ -191,7 +188,6 @@ void write_data_to_tsv_file(double *data, char **inputs) {
             inputs[2], inputs[4], inputs[5], data[0], data[1]);
 
     fclose(tsv_file);
-    
 }
 
 

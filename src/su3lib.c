@@ -293,22 +293,22 @@ void matmul(double *z, double *x, double *y) {
 }
 
 void cmmul(double *z, double c, double *x) {
-    for (size_t i = 0; i < X; ++i) {
+    for (int32_t i = 0; i < X; ++i) {
         z[i] = c*x[i];
     }
 }
 
 void immul(double *z, double c, double *x) {
     // multiply an imaginary number by a complex matrix
-    for (size_t i = 0; i < X/2; ++i) {
-        size_t j = 2*i;
-        z[j]   = -c*z[j+1]; // real 
-        z[j+1] = c*z[j]; // imag
+    for (int32_t i = 0; i < X/2; ++i) {
+        int32_t j = 2*i;
+        z[j]   = -c*x[j+1]; // real 
+        z[j+1] = c*x[j]; // imag
     }
 }
 
 void matadd(double *z, double *x, double *y) {
-    for (size_t i = 0; i < X; ++i) {
+    for (int32_t i = 0; i < X; ++i) {
         z[i] = x[i] + y[i];
     }
 }

@@ -7,7 +7,7 @@ extern const int64_t NC;
 extern const int64_t T; // lattice temporal size
 extern const int64_t L; // lattice spacial size
 extern const int64_t D; // spacetime dimensions
-extern const int64_t X; // SU(3) gauge theory, 12 reals
+extern const int32_t X; // SU(3) gauge theory, 12 reals
 extern const int64_t S_X; // for short storage
 extern const int64_t CLENGTH; // 
 extern const int64_t S_CLENGTH; // 

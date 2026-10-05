@@ -385,7 +385,7 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     double Ut[X];
 
     // iterators
-    int64_t i, j, k, tn;
+    int32_t i, j, k, tn;
     for (i = 0; i != esteps; i++) {
 
         // (1-H0/2n)^n |_tprev
