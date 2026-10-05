@@ -31,6 +31,19 @@ typedef struct {
     size_t block_size;
 } measurement_list;
 
+// TODO: put inputs into a struct for ease
+// typedef struct {
+//     int32_t n; // iterations of (1-H0/2n)
+//     int32_t nSources;
+//     char *r_list;
+//     char *t_list;
+//     char *b_list;
+//     double w;
+//     char *config_number;
+//     char *config;
+//     char *data_dir;
+// } input;
+
 //// declaration of functions
 // compute forward-backward derivative
 // void fbdelta(double *result, double *layer, double *Ulayer, int32_t lpos);
@@ -51,7 +64,8 @@ int64_t add_measurement_to_list(measurement_list *list, int64_t index,
 void delete_measurement_list(measurement_list *list);
 void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
 void compute_observables(double *trace_array, int32_t spos, int32_t zspos, double *U, 
-                         int32_t n, double ratio, int32_t t, int32_t b, double *prop_num, const int32_t width,
+                         int32_t n, double ratio, double w, int32_t t, int32_t b, double *prop_num, 
+                         const int32_t width,
                          const int32_t mu_e, const int32_t mu_r, const int32_t mu_b);
 double *get_unit_configuration();
 double *read_configuration(char *config);
@@ -67,15 +81,16 @@ void get_existing_sources(size_t *number_of_sources, char **inputs,
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
 int32_t ssl2sa(char *s, char **a); // space-separated list to string array
 void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize, 
+           double w,
 		       char **bList, int32_t bSize, char **tList, int32_t tSize, 
 		       int32_t nSources, char **inputs);
 
 int main(int32_t argc, char *argv[]) {
-    if (argc < 9 || argc > 9) {
+    if (argc < 10 || argc > 10) {
         printf("Input should look like: \n");
         printf("%s <n> <ratio list> num_sources <b list>"
 	       "<t list> config_number"
-               " config_path data_dir\n", argv[0]);
+               " config_path data_dir w\n", argv[0]);
         exit(1);
     }
 
@@ -89,8 +104,8 @@ int main(int32_t argc, char *argv[]) {
 
     printf("%s\n", config);
 
-    // double *V = read_configuration(config);
-    double *V = get_unit_configuration();
+    double *V = read_configuration(config);
+    // double *V = get_unit_configuration();
 
     // malloc is unnecessary, but doesn't really hurt time
     int32_t rSize = ssl2sa(argv[2], NULL);
@@ -103,12 +118,14 @@ int main(int32_t argc, char *argv[]) {
     char **tList = malloc(tSize*sizeof(char*));
     ssl2sa(argv[5], tList);
 
-    do_run_for_config(V, n, ratioList, rSize, bList, bSize, 
+    double w = atof(argv[9]);
+
+    do_run_for_config(V, n, ratioList, rSize, w, bList, bSize, 
 	       	      tList, tSize, nSources, argv);
 
-    // uncomment for gauge invariance check
+    // // uncomment for gauge invariance check
     // random_gauge_transform(V);
-    // do_run_for_config(V, n, ratioList, rSize, bList, bSize, 
+    // do_run_for_config(V, n, ratioList, rSize, w, bList, bSize, 
     //                   tList, tSize, nSources, argv);
 
     // Clean this up
@@ -135,6 +152,7 @@ int main(int32_t argc, char *argv[]) {
 }
 
 void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize, 
+      double w,
 			char **bList, int32_t bSize, char **tList, int32_t tSize, 
 			int32_t nSources, char **inputs) {
 
@@ -181,7 +199,7 @@ void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize,
                 create_measurement_list(nSources/sizes_extent+1);
 
             // setup directions for evolution, transverse, etc.
-            const int32_t width = L;
+            const int32_t width = L; // this should be L if we evolve in t
             int32_t mu_e = mu_t;
             int32_t mu_r = mu_z; // change to mu_t for z evolve case
             int32_t mu_b = mu_x;
@@ -209,11 +227,11 @@ void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize,
                 double trace_array[NUM_DATAS];
 
                 // here is where the physics happens
-                compute_observables(trace_array, lattice_s, lattice_zs, V, n, ratio, t, b, 
+                compute_observables(trace_array, lattice_s, lattice_zs, V, n, ratio, w, t, b, 
                                     prop_num, width, mu_e, mu_r, mu_b);
 
                 // print result of compute_observables
-                printf("%d, %d, %lf, %lf\n", parallel_s, s, trace_array[0], trace_array[1]);
+                printf("t=%d, b=%d, thread=%d, src=%d, %lf, %lf\n", t, b, parallel_s, s, trace_array[0], trace_array[1]);
 
                 if(add_measurement_to_list(data_list, 
                                            lattice_s, trace_array) != 0) {
@@ -319,9 +337,10 @@ void hamiltonian(double r, double w, double *result, double *layer, double *Ulay
     for (size_t i = 0; i < (size_t)X/2; i++) {
         size_t j = 2*i;
         //                     fwd-bwd derivative                              laplacian
-        result[j]   = -r*0.5*(fsite[j+1] - bsite[j+1]) + fabs(r)*w*0.5*(fsite[j] + bsite[j] - 2*site[j]);
-        result[j+1] =  r*0.5*(fsite[j]   - bsite[j]  ) + fabs(r)*w*0.5*(fsite[j] + bsite[j] - 2*site[j]);
+        result[j]   =  r*0.5*(fsite[j+1] - bsite[j+1]) - fabs(r)*w*0.5*(fsite[j]   + bsite[j]   - 2*site[j]);
+        result[j+1] = -r*0.5*(fsite[j]   - bsite[j]  ) - fabs(r)*w*0.5*(fsite[j+1] + bsite[j+1] - 2*site[j+1]);
         // the index swapping in the fwd-bwd derivative accounts for the multiplication by imaginary number i
+        // the overall minus sign is correct, laplacian is semi-negative definite
     }
 }
 
@@ -335,7 +354,8 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     //
 
     int64_t estep = ipow(L,mu_e); // since T is the last dimension, it won't effect the step size for any direction
-    int64_t eperiod = L*estep;
+    // int64_t eperiod = L*estep; // TODO: L thould be T?
+    int64_t eperiod = (mu_e == mu_t ? T : L)*estep;
 
     int64_t step = ipow(L,mu); // mu=0,1,2,3 // this one stays as L, it is the step size
     int64_t period = width*step;
@@ -350,23 +370,15 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     double Ulayer[width*X];
 
     // fill Ulayer for first use
-    int64_t l;
+    int32_t l;
     for (l = 0; l < width; l++) {
         memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X);
     }
 
-    // build coefficient matrix, factor of 'i' accounted for 
-    // since odd indexes represent the imaginary part
-    ///////////////////////////// Old way ////////////////////////////
-    // double coef = (double)edir * ratio/(2*n);
-    // double coefm[X];
-    // memset(coefm, 0, sizeof(coefm));
-    // coefm[1] = coef;  // 1, 9, 17 correspond to the imaginary
-    // coefm[9] = coef;  // part on the diagonal
-    // coefm[17] = coef;
-    //////////////////////////////////////////////////////////////////
-    // double coef = (double)edir/(2*n); // TODO: need to double check this since we add the Wilson term now
-    double coef = (double)1/(2*n); // TODO: need to double check this since we add the Wilson term now
+    // double coef = (double)edir/(2*n); // TODO: this is probaby incorrect
+    double coef = (double)1.0/(2*n);
+    double coef2 = 0.5*coef;
+    // double coef2 = 0.0;
 
     // also initiliaze arrays for iterative updates
     double fbder[X], update[X];
@@ -376,22 +388,30 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     int64_t i, j, k, tn;
     for (i = 0; i != esteps; i++) {
 
-        memcpy(layer, prop, sizeof(double)*width*X);
-        memcpy(helper, layer, sizeof(double)*width*X);
-
         // (1-H0/2n)^n |_tprev
         tn = n;
         while (tn--) {
+            memcpy(layer, prop, sizeof(double)*width*X);
+
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
                 hamiltonian(ratio, w, fbder, layer, Ulayer, j); // fwd-bwd derivative
                 cmmul(update,coef,fbder);
                 for (k = 0; k < X; k++) {
-                    helper[X*j+k] += update[k]; // this accounts for the identify operation, the '1' in (1-H0/2n)
-                                                // we add here instead of subtract, because we absorbed the minus into the
-                                                // Hamiltonian function
+                    helper[X*j+k] = update[k];
+                    prop[X*j+k] -= update[k];
                 }
             }
+
             memcpy(layer, helper, sizeof(double)*width*X);
+
+            // apply the hamiltonian again to the result of the previous application to get H^2
+            for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
+                hamiltonian(ratio, w, fbder, layer, Ulayer, j); // fwd-bwd derivative
+                cmmul(update,coef2,fbder);
+                for (k = 0; k < X; k++) {
+                    prop[X*j+k] += update[k];
+                }
+            }
         }
 
         // multiply time links if edir = +1
@@ -399,13 +419,13 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         if (edir == 1) {
             for(j = 0; j < width; j++) {
                 get_link(Ut,U,D*(spos+step*j)+mu_e);
-                matmul(&layer[X*j],&layer[X*j],Ut);
+                matmul(&prop[X*j],&prop[X*j],Ut);
             }
         }
 
         // prepare spos for next evol slice
         // spos = mod(spos + edir*estep, LVOLUME);
-    	spos = spos - mod(spos, eperiod) + mod(spos+estep*edir, eperiod);
+    	  spos = spos - mod(spos, eperiod) + mod(spos+estep*edir, eperiod);
 
         // multiply time links if edir = -1
         // U^+(tprev)
@@ -413,12 +433,9 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
             for(j = 0; j < width; j++) {
                 get_link(Ut,U,D*(spos+step*j)+mu_e);
                 adjoint(Ut,Ut);
-                matmul(&layer[X*j],&layer[X*j],Ut);
+                matmul(&prop[X*j],&prop[X*j],Ut);
             }
         }
-
-        // update helper array for next loop
-        memcpy(helper, layer, sizeof(double)*width*X);
 
         // update Ulayer for next loop
         for (l = 0; l < width; l++) {
@@ -428,17 +445,29 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         // (1-H0/2n)^n |_t
         tn = n;
         while (tn--) {
+            memcpy(layer, prop, sizeof(double)*width*X);
+
+            // TODO: this section and the similar one before could be abstracted, and probably made slightly faster
             for (j = 0; j < width; j++) { // scan across x direction
                 hamiltonian(ratio, w, fbder, layer, Ulayer, j); // Hamiltonian
                 cmmul(update, coef, fbder);
                 for (k = 0; k < X; k++) {
-                    helper[X*j+k] += update[k]; // this accounts for the identify operation, the '1' in (1-H0/2n)
+                    helper[X*j+k] = update[k];
+                    prop[X*j+k]  -= update[k]; // this accounts for the identity operation, the '1' in (1-H0/2n)
                 }
             }
-            memcpy(layer, helper, sizeof(double)*width*X);
-        }
 
-        memcpy(prop, layer, sizeof(double)*width*X);
+            memcpy(layer, helper, sizeof(double)*width*X);
+
+            // apply the hamiltonian again to the result of the previous application to get H^2
+            for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
+                hamiltonian(ratio, w, fbder, layer, Ulayer, j); // fwd-bwd derivative
+                cmmul(update,coef2,fbder);
+                for (k = 0; k < X; k++) {
+                    prop[X*j+k] += update[k];
+                }
+            }
+        }
     }
 }
 
@@ -544,7 +573,6 @@ void delete_measurement_list(measurement_list *list) {
 }
 
 void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources) {
-
     const int32_t little_L = (int32_t)(ceil(pow((num_sources/2),0.25)));
     /*const int32_t little_L = pow((num_sources/2),0.25)+1;*/
     const int32_t little_T = 2*little_L;
@@ -564,7 +592,8 @@ void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int3
 
 void compute_observables(double *trace_array, int32_t spos, int32_t zspos, 
                          double *U, int32_t n, 
-                         double ratio, int32_t t, int32_t b, 
+                         double ratio, double w,
+                         int32_t t, int32_t b, 
                          double *prop_num, const int32_t width,
                          const int32_t mu_e, const int32_t mu_r, const int32_t mu_b){
 
@@ -576,9 +605,9 @@ void compute_observables(double *trace_array, int32_t spos, int32_t zspos,
     int64_t bstep = ipow(L,mu_b);
     int64_t bperiod = L*bstep; // period for b direction, not generalized to mu_b=mu_t
     int64_t estep = ipow(L,mu_e);
-    int64_t eperiod = width*estep;
+    // int64_t eperiod = width*estep; // TODO: width should be T?
+    int64_t eperiod = (mu_e == mu_t ? T : L)*estep;
     int32_t edir, bdir; // edir is direction of evolution, usually t or z direction
-    double w = 0.001;
 
     memset(prop_num, 0, sizeof(double)*width*X);
     memcpy(&prop_num[zsrcp],source,sizeof(double)*X);
@@ -606,16 +635,16 @@ void compute_observables(double *trace_array, int32_t spos, int32_t zspos,
 
     trace(&trace_array[0], &prop_num[zsrcp]);
 
-    // print out the sum trace along the z direction
-    double tra[2];
-    double tsum_real = 0.0;
-    double tsum_imag = 0.0;
-    for (int32_t i = 0; i < width; ++i) {
-        trace(&tra[0], &prop_num[X*i]);
-        tsum_real += tra[0]; 
-        tsum_imag += tra[1]; 
-    }
-    printf("sum trace: %lf, %lf\n", tsum_real, tsum_imag);
+    // // print out the sum trace along the z direction
+    // double tra[2];
+    // double tsum_real = 0.0;
+    // double tsum_imag = 0.0;
+    // for (int32_t i = 0; i < width; ++i) {
+    //     trace(&tra[0], &prop_num[X*i]);
+    //     tsum_real += tra[0]; 
+    //     tsum_imag += tra[1]; 
+    // }
+    // printf("sum trace: %lf, %lf\n", tsum_real, tsum_imag);
 }
 
 double *get_unit_configuration() {
@@ -732,7 +761,6 @@ void write_data_to_file(measurement_list *list, char **inputs) {
         fwrite(list->measurements[i], sizeof(double), NUM_DATAS, data_file);
     }
     fclose(data_file);
-
 }
 
 measurement_list *read_data_from_file(char **inputs) {
