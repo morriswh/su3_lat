@@ -89,8 +89,8 @@ int main(int32_t argc, char *argv[]) {
     if (argc < 10 || argc > 10) {
         printf("Input should look like: \n");
         printf("%s <n> <ratio list> num_sources <b list>"
-	       "<t list> config_number"
-               " config_path data_dir w\n", argv[0]);
+                " <t list> config_number"
+                " config_path data_dir w\n", argv[0]);
         exit(1);
     }
 
@@ -767,9 +767,13 @@ measurement_list *read_data_from_file(char **inputs) {
     measurement_list *list = create_measurement_list(16);
     // code to write to file
     char data_path[200];
-    sprintf(data_path, "%s/n%sr%sb%st%sc%s.bin", inputs[8], inputs[1], 
-            inputs[2], inputs[4], inputs[5], inputs[6]);
+    sprintf(data_path, "%s/n%sr%sb%st%s/n%sr%sb%st%sc%s.bin", 
+            inputs[8], 
+            inputs[1], inputs[2], inputs[4], inputs[5], 
+            inputs[1], inputs[2], inputs[4], inputs[5], 
+            inputs[6]);
 
+    printf("Looking for file: %s\n", data_path);
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
@@ -790,6 +794,9 @@ measurement_list *read_data_from_file(char **inputs) {
 
         fclose(data_file);
     }
+    else {
+        printf("Data file not found.\n");
+    }
     return list;
 }
 
@@ -801,7 +808,7 @@ void get_existing_sources(size_t *number_of_sources, char **inputs, uint32_t *ex
     /*    return 0;*/
     /*}*/
 
-    // don't copy point32_ter, copy actual memory
+    // don't copy pointer, copy actual memory
     // we want a new location
     for (size_t i = 0; i < list->number_of_measurements; i++) {
         existant_sources[i] = list->indices[i];
