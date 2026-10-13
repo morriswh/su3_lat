@@ -31,18 +31,22 @@ typedef struct {
     size_t block_size;
 } measurement_list;
 
-// TODO: put inputs into a struct for ease
-// typedef struct {
-//     int32_t n; // iterations of (1-H0/2n)
-//     int32_t nSources;
-//     char *r_list;
-//     char *t_list;
-//     char *b_list;
-//     double w;
-//     char *config_number;
-//     char *config;
-//     char *data_dir;
-// } input;
+// Struct for input parameters
+typedef struct {
+    char config[100];
+    char config_number[10];
+    char data_dir[100];
+    int32_t num_sources;
+    int32_t shape[4];
+    char **r_list;
+    int32_t r_size;
+    char **t_list;
+    int32_t t_size;
+    char **b_list;
+    int32_t b_size;
+    int32_t n; // iterations of (1-H0/2n)
+    double w; // wilson parameter
+} input_parameters;
 
 //// declaration of functions
 // compute forward-backward derivative
@@ -73,74 +77,39 @@ void delete_configuration(double *V);
 double *random_gauge_transform(double *V);
 double *copy_configuration(double *V);
 int32_t *setup_parallization(int32_t *sizes_extent, int32_t num_sources);
-void create_info_file(char **inputs);
-void write_data_to_file(measurement_list *list, char **inputs);
-measurement_list *read_data_from_file(char **inputs);
-void get_existing_sources(size_t *number_of_sources, char **inputs, 
-                          uint32_t *existant_sources);
+void create_info_file(char **inputs); // broken for now 
+void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str);
+void write_data_to_file(measurement_list *list, char *data_path);
+measurement_list *read_data_from_file(char *data_path);
+void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
-int32_t ssl2sa(char *s, char **a); // space-separated list to string array
-void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize, 
-           double w,
-		       char **bList, int32_t bSize, char **tList, int32_t tSize, 
-		       int32_t nSources, char **inputs);
+void do_run_for_config(double *V, input_parameters *input);
+input_parameters *read_input_file_to_struct(char *file_name);
+void delete_input_struct(input_parameters *input);
+void get_contents(char *out, char* in);
+int32_t ssl2sa_alloc(char *s, char **a);
+int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size);
+void print_input_struct_info(input_parameters *input);
 
 int main(int32_t argc, char *argv[]) {
-    if (argc < 10 || argc > 10) {
-        printf("Input should look like: \n");
-        printf("%s <n> <ratio list> num_sources <b list>"
-                " <t list> config_number"
-                " config_path data_dir w\n", argv[0]);
+    if (argc != 1) {
+        printf("There should only be one argument here. That is the input file.\n");
         exit(1);
     }
 
     double begin = omp_get_wtime();
 
-    int32_t n = atoi(argv[1]);
-    int32_t nSources = atoi(argv[3]);
-    // char *config_number = argv[6];
-    char *config = argv[7];
-    // char *data_dir = argv[8];
+    input_parameters *input = read_input_file_to_struct(argv[1]);
+    print_input_struct_info(input);
 
-    printf("%s\n", config);
-
-    double *V = read_configuration(config);
-    // double *V = get_unit_configuration();
-
-    // malloc is unnecessary, but doesn't really hurt time
-    int32_t rSize = ssl2sa(argv[2], NULL);
-    char **ratioList = malloc(rSize*sizeof(char*));
-    ssl2sa(argv[2], ratioList);
-    int32_t bSize = ssl2sa(argv[4], NULL);
-    char **bList = malloc(bSize*sizeof(char*));
-    ssl2sa(argv[4], bList);
-    int32_t tSize = ssl2sa(argv[5], NULL);
-    char **tList = malloc(tSize*sizeof(char*));
-    ssl2sa(argv[5], tList);
-
-    double w = atof(argv[9]);
-
-    do_run_for_config(V, n, ratioList, rSize, w, bList, bSize, 
-	       	      tList, tSize, nSources, argv);
+    do_run_for_config(V, input);
 
     // // uncomment for gauge invariance check
     // random_gauge_transform(V);
     // do_run_for_config(V, n, ratioList, rSize, w, bList, bSize, 
     //                   tList, tSize, nSources, argv);
 
-    // Clean this up
-    for (int32_t i = 0; i < rSize; i++) {
-        free(ratioList[i]);
-    }
-    for (int32_t j = 0; j < bSize; j++) {
-        free(bList[j]);
-    }
-    for (int32_t k = 0; k < tSize; k++) {
-        free(tList[k]);
-    }
-    free(ratioList);
-    free(bList);
-    free(tList);
+    delete_input_struct(input);
 
     delete_configuration(V);
 
@@ -151,10 +120,16 @@ int main(int32_t argc, char *argv[]) {
     return 0;
 }
 
-void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize, 
-      double w,
-			char **bList, int32_t bSize, char **tList, int32_t tSize, 
-			int32_t nSources, char **inputs) {
+void do_run_for_config(double *V, input_parameters *input) {
+    int32_t n = input->n; 
+    char **ratioList = input->r_list;
+    int32_t rSize = input->r_size;
+    double w = input->w;
+    char **bList = input->b_list;
+    int32_t bSize = input->b_size;
+    char **tList = input->t_list; 
+    int32_t tSize = input->t_size; 
+    int32_t nSources = input->num_sources;
 
     // setup parallelization
     int32_t sizes_extent;
@@ -175,17 +150,19 @@ void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize,
         char *ratioStr = ratioList[i];
         char *bStr = bList[j];
         char *tStr = tList[k];
-        char *inargs[] = { inputs[0], inputs[1], ratioStr, inputs[3], bStr, tStr, 
-                           inputs[6], inputs[7], inputs[8] };
+        // TODO: remove pointless zero element from this array, and possibly chang how you handle this entirely
+        // char *inargs[] = { "NONE", input->n, ratioStr, input->num_sources, bStr, tStr, 
+        //                    input->config_number, input->config, input->data_dir };
+
+        char data_path[400];
+        create_data_path(data_path, input, ratioStr, tStr, bStr); 
         
         double ratio = atof(ratioStr);
         int32_t b = atoll(bStr);
         int32_t t = atoll(tStr);
 
-        create_info_file(inargs); // if it doesn't already exist
-
         size_t existantSourceNumber; 
-        get_existing_sources(&existantSourceNumber, inargs, existant_sources);
+        get_existing_sources(&existantSourceNumber, existant_sources, data_path);
 
         // printf("begin parallel stuff\n");
 
@@ -242,14 +219,14 @@ void do_run_for_config(double *V, int32_t n, char **ratioList, int32_t rSize,
 
                 if (data_list->number_of_measurements > (size_t)20000) {
                     #pragma omp critical
-                    write_data_to_file(data_list, inargs);
+                    write_data_to_file(data_list, data_path);
                     delete_measurement_list(data_list);
                     data_list = create_measurement_list(16);
                 }
             }
 
             #pragma omp critical
-            write_data_to_file(data_list, inargs);
+            write_data_to_file(data_list, data_path);
             delete_measurement_list(data_list);
         }
         #pragma omp barrier
@@ -719,6 +696,7 @@ int32_t *setup_parallization(int32_t *sizes_extent, int32_t num_sources) {
 }
 
 void create_info_file(char **inputs) {
+    // TODO: change how we do this. It's basically useless right now
     // make an info file
     char info_path[200];
     sprintf(info_path, "%s/info_src%s", inputs[8], inputs[3]);
@@ -743,16 +721,21 @@ void create_info_file(char **inputs) {
     }
 }
 
-void write_data_to_file(measurement_list *list, char **inputs) {
-    char data_dir[200];
-    sprintf(data_dir, "%s/n%sr%sb%st%s", inputs[8], 
-            inputs[1], inputs[2], inputs[4], inputs[5]);
-    mkdir(data_dir, 0755);
+void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str) {
+        // char *inargs[] = { "NONE", input->n, ratioStr, input->num_sources, bStr, tStr, 
+        //                    input->config_number, input->config, input->data_dir };
+    char data_sub_dir[400];
+    sprintf(data_sub_dir, "%s/n%dr%sb%st%s", input->data_dir, 
+            input->n, r_str, b_str, t_str);
+    mkdir(data_sub_dir, 0755);
+
+    // char data_path[400];
+    sprintf(data_path, "%s/n%dr%sb%st%sc%s.bin", data_sub_dir, 
+            input->n, r_str, b_str, t_str, input->config_number);
+}
+
+void write_data_to_file(measurement_list *list, char *data_path) {
     // code to write to file
-    char data_path[400];
-    sprintf(data_path, "%s/n%sr%sb%st%s/n%sr%sb%st%sc%s.bin", inputs[8], 
-            inputs[1], inputs[2], inputs[4], inputs[5],
-            inputs[1], inputs[2], inputs[4], inputs[5], inputs[6]);
 
     FILE *data_file;
     data_file = fopen(data_path, "ab");
@@ -763,16 +746,8 @@ void write_data_to_file(measurement_list *list, char **inputs) {
     fclose(data_file);
 }
 
-measurement_list *read_data_from_file(char **inputs) {
+measurement_list *read_data_from_file(char *data_path) {
     measurement_list *list = create_measurement_list(16);
-    // code to write to file
-    char data_path[200];
-    sprintf(data_path, "%s/n%sr%sb%st%s/n%sr%sb%st%sc%s.bin", 
-            inputs[8], 
-            inputs[1], inputs[2], inputs[4], inputs[5], 
-            inputs[1], inputs[2], inputs[4], inputs[5], 
-            inputs[6]);
-
     printf("Looking for file: %s\n", data_path);
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
@@ -800,13 +775,8 @@ measurement_list *read_data_from_file(char **inputs) {
     return list;
 }
 
-void get_existing_sources(size_t *number_of_sources, char **inputs, uint32_t *existant_sources) {
-    measurement_list *list = read_data_from_file(inputs);
-    // uint32_t *existant_sources = 
-    //     malloc(sizeof(*existant_sources) * list->number_of_measurements);
-    /*if (existant_sources == NULL) {*/
-    /*    return 0;*/
-    /*}*/
+void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path) {
+    measurement_list *list = read_data_from_file(data_path);
 
     // don't copy pointer, copy actual memory
     // we want a new location
@@ -827,29 +797,192 @@ int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
     return 0;
 }
 
-int32_t ssl2sa(char *s, char **a) {
+input_parameters *read_input_file_to_struct(char *file_name) {
+    // TODO: update this so it better handles bad input files and extra spaces
+    size_t NUM_PARAMS = 10;
+
+    char *PARAM_LABELS[] = {
+        "CONFIG_FILE",
+        "CONFIG_NUM",
+        "DATA_DIR",
+        "NUM_SRC",
+        "SHAPE",
+        "T_LIST",
+        "B_LIST",
+        "R_LIST",
+        "N_PARAM",
+        "W_PARAM"
+    };
+    size_t PARAM_SIZES[] = {11, 10, 8, 7, 5, 6, 6, 6, 7, 7 };
+
+    char PARAM_STRINGS[NUM_PARAMS][100];
+
+    input_parameters *input;
+    input = malloc(sizeof(input_parameters));
+
+    char line[100];
+
+    FILE *infile = fopen(file_name, "r");
+    if (infile == NULL) {
+        printf("Cannot find input file. Exiting.\n");
+        exit(1);
+    }
+
+    while( fgets(line, 100, infile) != NULL) {
+        int res;
+        for (size_t i = 0; i < NUM_PARAMS; ++i) {
+            res = memcmp(line, PARAM_LABELS[i], PARAM_SIZES[i]);
+            if (res == 0) {
+                char *str = &line[PARAM_SIZES[i]+3];
+                get_contents(PARAM_STRINGS[i], str);
+                // printf("%s", str);
+                continue;
+            }
+        }
+    }
+
+    memcpy(input->config, PARAM_STRINGS[0], sizeof(input->config));
+    memcpy(input->config_number, PARAM_STRINGS[1], sizeof(input->config_number));
+    memcpy(input->data_dir, PARAM_STRINGS[2], sizeof(input->data_dir));
+
+    input->num_sources = atoi(PARAM_STRINGS[3]);
+
+    ssl2ia_fixed(PARAM_STRINGS[4], input->shape, 4);
+
+    input->r_size = ssl2sa_alloc(PARAM_STRINGS[5], NULL);
+    input->r_list = malloc(input->r_size*sizeof(char*));
+    ssl2sa_alloc(PARAM_STRINGS[5], input->r_list);
+
+    input->t_size = ssl2sa_alloc(PARAM_STRINGS[6], NULL);
+    input->t_list = malloc(input->t_size*sizeof(char*));
+    ssl2sa_alloc(PARAM_STRINGS[6], input->t_list);
+
+    input->b_size = ssl2sa_alloc(PARAM_STRINGS[7], NULL);
+    input->b_list = malloc(input->b_size*sizeof(char*));
+    ssl2sa_alloc(PARAM_STRINGS[7], input->b_list);
+
+    input->n = atoi(PARAM_STRINGS[8]);
+    input->w = atof(PARAM_STRINGS[9]);
+
+    fclose(infile);
+
+    return input;
+}
+
+void delete_input_struct(input_parameters *input) {
+    for (int32_t i = 0; i < input->r_size; i++) {
+        free(input->r_list[i]);
+    }
+    for (int32_t i = 0; i < input->b_size; i++) {
+        free(input->b_list[i]);
+    }
+    for (int32_t i = 0; i < input->t_size; i++) {
+        free(input->t_list[i]);
+    }
+    free(input->r_list);
+    free(input->b_list);
+    free(input->t_list);
+    free(input);
+}
+
+void get_contents(char *out, char* in) {
+    size_t i = 0;
+    size_t j = 0;
+    while (in[i] != '\n') {
+        if (in[i] != '"') {
+            out[j] = in[i];
+            j++;
+        }
+        i++;
+    }
+    out[j] = '\0';
+}
+
+int32_t ssl2sa_alloc(char *s, char **a) {
     int32_t c = 0;
     if (a == NULL) {
         int32_t i = 0;
-        while (s[i] != '\0') {
-            if (s[i] == ' ') {
+        while (1) {
+            if ( s[i] == ' ' || s[i] == '\0') {
                 c++;
             }
+            if (s[i] == '\0') break;
             i++;
         }
     }
     else {
         int32_t i = 0;
         int32_t ri = 0;
-        while (s[i] != '\0') {
-            if (s[i] == ' ') {
+        while (1) {
+            if ( s[i] == ' ' || s[i] == '\0') {
                 *(a+c) = calloc(i-ri+1, sizeof(char));
                 strncpy(*(a+c), s+ri, i-ri);
                 ri = i + 1;
                 c++;
             }
+            if (s[i] == '\0') break;
             i++;
         }
     }
     return c;
+}
+
+int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size) {
+    size_t c = 0;
+    size_t i = 0;
+    size_t ri = 0;
+    while (1) {
+        if ( s[i] == ' ' || s[i] == '\0') {
+            a[c] = atoi(&s[ri]); 
+            ri = i+1;
+            c++;
+        }
+        if (s[i] == '\0' || c == size) {
+            break;
+        }
+        i++;
+    }
+    return c;
+}
+
+void print_input_struct_info(input_parameters *input) {
+    printf("Doing run with following inputs:\n");
+    printf("Configuration file: %s\n", input->config);
+    printf("Configuration number: %s\n", input->config_number);
+    printf("Data write directory: %s\n", input->data_dir);
+    printf("Number of sources: %d\n", input->num_sources);
+    printf("Auxiliary propagator directions: %d, %d, %d, %d\n", 
+            input->shape[0], input->shape[1], input->shape[2], input->shape[3]);
+    printf("Ratio inputs: ");
+    for (int32_t i = 0; i < input->r_size; i++) {
+        printf("%s", input->r_list[i]);
+        if (i < input->r_size-1) {
+            printf(", ");
+        }
+        else {
+            printf("\n");
+        }
+    }
+    printf("Time inputs: ");
+    for (int32_t i = 0; i < input->t_size; i++) {
+        printf("%s", input->t_list[i]);
+        if (i < input->t_size-1) {
+            printf(", ");
+        }
+        else {
+            printf("\n");
+        }
+    }
+    printf("bT inputs: ");
+    for (int32_t i = 0; i < input->b_size; i++) {
+        printf("%s", input->b_list[i]);
+        if (i < input->b_size-1) {
+            printf(", ");
+        }
+        else {
+            printf("\n");
+        }
+    }
+    printf("Hamiltonian iterations, n: %d\n", input->n);
+    printf("Wilson parameter, w: %lf\n", input->w);
 }
