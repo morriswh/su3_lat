@@ -46,6 +46,8 @@ typedef struct {
     int32_t b_size;
     int32_t n; // iterations of (1-H0/2n)
     double w; // wilson parameter
+
+    double *U;
 } input_parameters;
 
 //// declaration of functions
@@ -83,7 +85,7 @@ void write_data_to_file(measurement_list *list, char *data_path);
 measurement_list *read_data_from_file(char *data_path);
 void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
-void do_run_for_config(double *V, input_parameters *input);
+void do_run_for_config(input_parameters *input);
 input_parameters *read_input_file_to_struct(char *file_name);
 void delete_input_struct(input_parameters *input);
 void get_contents(char *out, char* in);
@@ -92,7 +94,7 @@ int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size);
 void print_input_struct_info(input_parameters *input);
 
 int main(int32_t argc, char *argv[]) {
-    if (argc != 1) {
+    if (argc != 2) {
         printf("There should only be one argument here. That is the input file.\n");
         exit(1);
     }
@@ -102,7 +104,7 @@ int main(int32_t argc, char *argv[]) {
     input_parameters *input = read_input_file_to_struct(argv[1]);
     print_input_struct_info(input);
 
-    do_run_for_config(V, input);
+    do_run_for_config(input);
 
     // // uncomment for gauge invariance check
     // random_gauge_transform(V);
@@ -111,8 +113,6 @@ int main(int32_t argc, char *argv[]) {
 
     delete_input_struct(input);
 
-    delete_configuration(V);
-
     double end = omp_get_wtime();
     double time_spent = end - begin;
     printf("Elapsed time: %lfs\n", time_spent);
@@ -120,7 +120,7 @@ int main(int32_t argc, char *argv[]) {
     return 0;
 }
 
-void do_run_for_config(double *V, input_parameters *input) {
+void do_run_for_config(input_parameters *input) {
     int32_t n = input->n; 
     char **ratioList = input->r_list;
     int32_t rSize = input->r_size;
@@ -130,6 +130,7 @@ void do_run_for_config(double *V, input_parameters *input) {
     char **tList = input->t_list; 
     int32_t tSize = input->t_size; 
     int32_t nSources = input->num_sources;
+    double *V = input->U;
 
     // setup parallelization
     int32_t sizes_extent;
@@ -208,7 +209,7 @@ void do_run_for_config(double *V, input_parameters *input) {
                                     prop_num, width, mu_e, mu_r, mu_b);
 
                 // print result of compute_observables
-                printf("t=%d, b=%d, thread=%d, src=%d, %lf, %lf\n", t, b, parallel_s, s, trace_array[0], trace_array[1]);
+                // printf("t=%d, b=%d, thread=%d, src=%d, %lf, %lf\n", t, b, parallel_s, s, trace_array[0], trace_array[1]);
 
                 if(add_measurement_to_list(data_list, 
                                            lattice_s, trace_array) != 0) {
@@ -770,7 +771,7 @@ measurement_list *read_data_from_file(char *data_path) {
         fclose(data_file);
     }
     else {
-        printf("Data file not found.\n");
+        printf("Data file not found. A new data file will be created.\n");
     }
     return list;
 }
@@ -849,27 +850,30 @@ input_parameters *read_input_file_to_struct(char *file_name) {
 
     ssl2ia_fixed(PARAM_STRINGS[4], input->shape, 4);
 
-    input->r_size = ssl2sa_alloc(PARAM_STRINGS[5], NULL);
-    input->r_list = malloc(input->r_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[5], input->r_list);
-
-    input->t_size = ssl2sa_alloc(PARAM_STRINGS[6], NULL);
+    input->t_size = ssl2sa_alloc(PARAM_STRINGS[5], NULL);
     input->t_list = malloc(input->t_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[6], input->t_list);
+    ssl2sa_alloc(PARAM_STRINGS[5], input->t_list);
 
-    input->b_size = ssl2sa_alloc(PARAM_STRINGS[7], NULL);
+    input->b_size = ssl2sa_alloc(PARAM_STRINGS[6], NULL);
     input->b_list = malloc(input->b_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[7], input->b_list);
+    ssl2sa_alloc(PARAM_STRINGS[6], input->b_list);
+
+    input->r_size = ssl2sa_alloc(PARAM_STRINGS[7], NULL);
+    input->r_list = malloc(input->r_size*sizeof(char*));
+    ssl2sa_alloc(PARAM_STRINGS[7], input->r_list);
 
     input->n = atoi(PARAM_STRINGS[8]);
     input->w = atof(PARAM_STRINGS[9]);
 
     fclose(infile);
 
+    input->U = read_configuration(input->config);
+
     return input;
 }
 
 void delete_input_struct(input_parameters *input) {
+    delete_configuration(input->U);
     for (int32_t i = 0; i < input->r_size; i++) {
         free(input->r_list[i]);
     }
