@@ -39,6 +39,7 @@ typedef struct {
     char averaged_data_dir[100];
     int32_t num_sources;
     int32_t shape[4];
+    int32_t r_direction[4];
     char **r_list;
     int32_t r_size;
     char **t_list;
@@ -69,10 +70,10 @@ typedef struct {
 // contains all operations including Wilson/mass term, also this has an overall opposite sign from the paper
 void hamiltonian(double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos);
 // compute LMN type propagator [add reference]
-void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
+void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
 		 int32_t width, int32_t mu_e, int32_t esteps, int32_t edir, double ratio, double w);
 // compute transverse links
-void trLinksnew(double *prop, double *U, int64_t spos, int32_t mu, int32_t bmu, 
+void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t bmu, 
                 int32_t width, int32_t bsteps, int32_t bdir);
 // create a struct containing dynamic list of measurements
 measurement_list *create_measurement_list(size_t block_size);
@@ -266,7 +267,7 @@ void hamiltonian(double r, double w, double *result, double *layer, double *Ulay
     }
 }
 
-void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
+void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
         int32_t width, int32_t mu_e, int32_t esteps, int32_t edir, double ratio, 
         double w) {
 
@@ -393,7 +394,7 @@ void tpropLMNnew(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     }
 }
 
-void trLinksnew(double *prop, double *U, int64_t spos, int32_t mu, int32_t width, 
+void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width, 
         int32_t bmu, int32_t bsteps, int32_t bdir) {
 
     int64_t step = ipow(L,mu);
@@ -541,22 +542,26 @@ void compute_observables(double *trace_array, double *prop_num, int32_t spos, co
     memset(prop_num, 0, sizeof(double)*loop->width*X);
     memcpy(&prop_num[zsrcp],source,sizeof(double)*X);
 
-    tpropLMNnew(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, t, input->shape[0], ratio, input->w);
+    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
+            t, input->shape[0], ratio*input->r_direction[0], input->w);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*input->shape[0], eperiod);
 
-    trLinksnew(prop_num, U, spos, loop->mu_r, loop->width, loop->mu_b, b, bdir=1);
+    trLinks(prop_num, U, spos, loop->mu_r, loop->width, loop->mu_b, b, bdir=1);
     spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
 
-    tpropLMNnew(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, t, input->shape[1], ratio, input->w);
+    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
+            t, input->shape[1], ratio*input->r_direction[1], input->w);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*input->shape[1], eperiod);
 
-    tpropLMNnew(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, t, input->shape[2], -ratio, input->w);
+    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
+            t, input->shape[2], ratio*input->r_direction[2], input->w);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*input->shape[2], eperiod);
 
-    trLinksnew(prop_num, U, spos, loop->mu_r, loop->width, loop->mu_b, b, bdir=-1);
+    trLinks(prop_num, U, spos, loop->mu_r, loop->width, loop->mu_b, b, bdir=-1);
     spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
 
-    tpropLMNnew(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, t, input->shape[3], -ratio, input->w);
+    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
+            t, input->shape[3], ratio*input->r_direction[3], input->w);
 
     trace(&trace_array[0], &prop_num[zsrcp]);
 
@@ -749,7 +754,7 @@ int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
 //// functions for handling program input
 input_parameters *read_input_file_to_struct(char *file_name) {
     // TODO: update this so it better handles bad input files and extra spaces
-    size_t NUM_PARAMS = 11;
+    size_t NUM_PARAMS = 12;
 
     char *PARAM_LABELS[] = {
         "CONFIG_FILE",
@@ -758,13 +763,14 @@ input_parameters *read_input_file_to_struct(char *file_name) {
         "AVERAGED_DATA_DIR",
         "NUM_SRC",
         "SHAPE",
+        "R_SHAPE",
         "T_LIST",
         "B_LIST",
         "R_LIST",
         "N_PARAM",
         "W_PARAM"
     };
-    size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 6, 6, 6, 7, 7 };
+    size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 7, 6, 6, 6, 7, 7 };
 
     char PARAM_STRINGS[NUM_PARAMS][100];
 
@@ -791,29 +797,32 @@ input_parameters *read_input_file_to_struct(char *file_name) {
         }
     }
 
-    memcpy(input->config, PARAM_STRINGS[0], sizeof(input->config));
-    memcpy(input->config_number, PARAM_STRINGS[1], sizeof(input->config_number));
-    memcpy(input->data_dir, PARAM_STRINGS[2], sizeof(input->data_dir));
-    memcpy(input->averaged_data_dir, PARAM_STRINGS[3], sizeof(input->averaged_data_dir));
+    size_t index = 0;
 
-    input->num_sources = atoi(PARAM_STRINGS[4]);
+    memcpy(input->config, PARAM_STRINGS[index], sizeof(input->config));
+    memcpy(input->config_number, PARAM_STRINGS[++index], sizeof(input->config_number));
+    memcpy(input->data_dir, PARAM_STRINGS[++index], sizeof(input->data_dir));
+    memcpy(input->averaged_data_dir, PARAM_STRINGS[++index], sizeof(input->averaged_data_dir));
 
-    ssl2ia_fixed(PARAM_STRINGS[5], input->shape, 4);
+    input->num_sources = atoi(PARAM_STRINGS[++index]);
 
-    input->t_size = ssl2sa_alloc(PARAM_STRINGS[6], NULL);
+    ssl2ia_fixed(PARAM_STRINGS[++index], input->shape, 4);
+    ssl2ia_fixed(PARAM_STRINGS[++index], input->r_direction, 4);
+
+    input->t_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
     input->t_list = malloc(input->t_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[6], input->t_list);
+    ssl2sa_alloc(PARAM_STRINGS[index], input->t_list);
 
-    input->b_size = ssl2sa_alloc(PARAM_STRINGS[7], NULL);
+    input->b_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
     input->b_list = malloc(input->b_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[7], input->b_list);
+    ssl2sa_alloc(PARAM_STRINGS[index], input->b_list);
 
-    input->r_size = ssl2sa_alloc(PARAM_STRINGS[8], NULL);
+    input->r_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
     input->r_list = malloc(input->r_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[8], input->r_list);
+    ssl2sa_alloc(PARAM_STRINGS[index], input->r_list);
 
-    input->n = atoi(PARAM_STRINGS[9]);
-    input->w = atof(PARAM_STRINGS[10]);
+    input->n = atoi(PARAM_STRINGS[++index]);
+    input->w = atof(PARAM_STRINGS[++index]);
 
     fclose(infile);
 
@@ -909,8 +918,10 @@ void print_input_struct_info(input_parameters *input) {
     printf("Data write directory: %s\n", input->data_dir);
     printf("Source averaged data write directory: %s\n", input->averaged_data_dir);
     printf("Number of sources: %d\n", input->num_sources);
-    printf("Auxiliary propagator directions: %d, %d, %d, %d\n", 
+    printf("Auxiliary propagator t directions: %d, %d, %d, %d\n", 
             input->shape[0], input->shape[1], input->shape[2], input->shape[3]);
+    printf("Auxiliary propagator r directions: %d, %d, %d, %d\n", 
+            input->r_direction[0], input->r_direction[1], input->r_direction[2], input->r_direction[3]);
     printf("Ratio inputs: ");
     for (int32_t i = 0; i < input->r_size; i++) {
         printf("%s", input->r_list[i]);
