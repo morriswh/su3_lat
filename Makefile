@@ -13,7 +13,7 @@ LIBS      := sizes fileIO matops su3lib apelib
 LIBFILES  := $(LIBS:%=$(BUILD_DIR)/lib%.a)
 
 # Override on the command line, e.g.  make file=source_avg_num
-file      ?= imPropNum
+file      ?= imProp
 TARGET    := $(file)32
 
 .PHONY: all clean

@@ -17,7 +17,7 @@
 
 typedef struct {
     uint32_t *indices; // store lattice index for unordered file write
-    double **measurements; // array of measurements, probably 6 doubles
+    double **measurements; // array of measurements, probably 2 doubles
     size_t number_of_measurements;
     size_t size;
     size_t block_size;
@@ -27,7 +27,7 @@ typedef struct {
 /*    int64_t t;*/
 /*    int64_t b;*/
 /*    int64_t number_of_sources;*/
-/*    double *data; // array of measurements, probably 6 doubles*/
+/*    double *data; // array of measurements, probably 2 doubles*/
 /*} averaged_data;*/
 
 // create a struct containing dynamic list of measurements
@@ -42,6 +42,7 @@ void write_data_to_tsv_file(double *data, char **inputs);
 int64_t main(int64_t argc, char *argv[])
 {
     if (argc < 9 || argc > 9) {
+        printf("argc = %ld \n", argc);
         printf("Input should look like: \n");
         printf("%s n ratio num_sources b t config_number"
                " binary_file data_dir\n", argv[0]);
@@ -57,7 +58,7 @@ int64_t main(int64_t argc, char *argv[])
     char *binary_path = argv[7];
     char *data_dir = argv[8];
 
-    double averaged_data[6] = {0};
+    double averaged_data[2] = {0};
     measurement_list *ordered_data = read_data_from_file_in_order(argv);
 
     for (int64_t s = 0; s<numSources; s++) {
@@ -67,15 +68,15 @@ int64_t main(int64_t argc, char *argv[])
             printf("missing data!\n");
             exit(1);
         }
-        for (int64_t i = 0; i<6; i++) {
+        for (int64_t i = 0; i<2; i++) {
             averaged_data[i] += ordered_data->measurements[lattice_s][i];
         }
     }
 
     delete_measurement_list(ordered_data);
 
-    for (int64_t i = 0; i<6; i++) {
-        averaged_data[i] /= numSources;
+    for (int32_t i = 0; i<2; i++) {
+        averaged_data[i] /= (double)numSources;
         printf("%lf ", averaged_data[i]);
     }
     printf("\n");
@@ -114,24 +115,28 @@ void delete_measurement_list(measurement_list *list) {
 }
 
 void source_grid(int64_t *pos, int64_t source, int64_t num_sources) {
+    if ( num_sources == 1 ) {
+        *pos = 0;
+    } else {
 
-    const int64_t little_L = (int)(ceil(pow((num_sources/2),0.25)));
-    const int64_t little_T = 2*little_L;
-    const int64_t fact_L = L/little_L;
-    const int64_t fact_T = T/little_T;
+    	const int64_t little_L = (int)(ceil(pow((num_sources/2),0.25)));
+    	const int64_t little_T = 2*little_L;
+    	const int64_t fact_L = L/little_L;
+    	const int64_t fact_T = T/little_T;
 
-    int64_t src[4];
+    	int64_t src[4];
 
-    src[0] = fact_L*(source%little_L);
-    src[1] = fact_L*((source/little_L)%little_L);
-    src[2] = fact_L*(((source/little_L)/little_L)%little_L);
-    src[3] = fact_T*((((source/little_L)/little_L)/little_L)%little_T);
+    	src[0] = fact_L*(source%little_L);
+    	src[1] = fact_L*((source/little_L)%little_L);
+    	src[2] = fact_L*(((source/little_L)/little_L)%little_L);
+    	src[3] = fact_T*((((source/little_L)/little_L)/little_L)%little_T);
 
-    *pos = src[3]*LCUBE + src[2]*LSQUARE + src[1]*L + src[0];
+    	*pos = src[3]*LCUBE + src[2]*LSQUARE + src[1]*L + src[0];
+
+    }
 }
 
 measurement_list *read_data_from_file_in_order(char **inputs) {
-
     measurement_list *list = create_full_measurement_list(LVOLUME);
     char *data_path = inputs[7];
 
@@ -143,14 +148,14 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
         for (int64_t i=0; i<LVOLUME; i++) {
             num_read = 0;
             uint32_t index;
-            double measurement[6];
+            double measurement[2];
             num_read += fread(&index, sizeof(uint32_t), 1, data_file);
-            num_read += fread(measurement, sizeof(double), 6, data_file);
-            if (num_read == 7) {
+            num_read += fread(measurement, sizeof(double), 2, data_file);
+            if (num_read == 3) {
                 list->indices[index] = index;
-                list->measurements[index] = malloc(6*sizeof(double));
+                list->measurements[index] = malloc(2*sizeof(double));
                 memcpy(list->measurements[index],
-                       measurement,6*sizeof(double));
+                       measurement,2*sizeof(double));
             } else {
                 break;
             }
@@ -163,7 +168,6 @@ measurement_list *read_data_from_file_in_order(char **inputs) {
 }
 
 void write_data_to_tsv_file(double *data, char **inputs) {
-
     // code to write to file
     char data_path[200];
     sprintf(data_path, "%s/n%ss%sc%s.tsv", 
@@ -177,16 +181,13 @@ void write_data_to_tsv_file(double *data, char **inputs) {
     tsv_file = fopen(data_path, "a");
 
     if (result != 0) {
-        fprintf(tsv_file, "# r\tb\tt\tnum.real\tnum.imag\t"
-                "denA.real\tdenA.imag\tdenB.real\tdenB.imag\t\n");
+        fprintf(tsv_file, "# r\tb\tt\tnum.real\tnum.imag\t\n");
     }
 
-    fprintf(tsv_file, "%s\t%s\t%s\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t\n", 
-            inputs[2], inputs[4], inputs[5], 
-            data[0], data[1], data[2], data[3], data[4], data[5]);
+    fprintf(tsv_file, "%s\t%s\t%s\t%lf\t%lf\t\n", 
+            inputs[2], inputs[4], inputs[5], data[0], data[1]);
 
     fclose(tsv_file);
-    
 }
 
 
