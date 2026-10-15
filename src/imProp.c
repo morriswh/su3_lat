@@ -25,10 +25,9 @@ enum dim{mu_x, mu_y, mu_z, mu_t};
 // Creating the structure
 typedef struct {
     uint32_t *indices; // store lattice index for unordered file write
-    double **measurements; // array of measurements, NUM_DATAS doubles
+    double *measurements; // array of measurements, flat
     size_t number_of_measurements;
     size_t size;
-    size_t block_size;
 } measurement_list;
 
 // Struct for input parameters
@@ -97,6 +96,7 @@ int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size);
 void print_input_struct_info(input_parameters *input);
 
 //// functions for handling and saving results of calculation
+// TODO: create a clear_measurement_list() function to avoid constant allocator calls
 measurement_list *create_measurement_list(size_t block_size);
 int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement);
@@ -105,7 +105,7 @@ void write_data_to_file(measurement_list *list, char *data_path);
 measurement_list *read_data_from_file(char *data_path);
 
 //// functions for source averaging
-void do_source_average(input_parameters *input);
+void do_source_average(input_parameters *input); // FIX
 measurement_list *read_data_from_file_in_order(char *data_path);
 measurement_list *create_full_measurement_list(size_t block_size);
 void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str, input_parameters *input);
@@ -129,14 +129,20 @@ int main(int32_t argc, char *argv[]) {
 
     delete_configuration(input->U);
 
+    double middle = omp_get_wtime();
+    double time_spent = middle - begin;
+    printf("Measurement elapsed time: %lfs\n", time_spent);
+
     /* do the source average here */
     do_source_average(input);
 
     delete_input_struct(input);
 
     double end = omp_get_wtime();
-    double time_spent = end - begin;
-    printf("Elapsed time: %lfs\n", time_spent);
+    time_spent = end - middle;
+    printf("Source average elapsed time : %lfs\n", time_spent);
+    time_spent = end - begin;
+    printf("Total elapsed time: %lfs\n", time_spent);
 
     return 0;
 }
@@ -401,15 +407,17 @@ void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width,
     }
 }
 
-measurement_list *create_measurement_list(size_t block_size) {
+measurement_list *create_measurement_list(size_t size) {
     measurement_list *list = malloc(sizeof(measurement_list));
     if (list != NULL) {
         list->number_of_measurements = 0;
-        list->size = block_size;
-        list->block_size = block_size;
-        list->indices = (uint32_t*)malloc(sizeof(uint32_t)*block_size);
-        list->measurements = (double**)malloc(sizeof(double*)*block_size);
+        list->size = size;
+        list->indices = malloc(size*sizeof(uint32_t));
+        list->measurements = malloc(NUM_DATAS*size*sizeof(double));
         if (list->indices == NULL || list->measurements == NULL) {
+            // QSTN: do we need to free list->indices and list->measurements if they are already NULL?
+            free(list->indices);
+            free(list->measurements);
             free(list);
             return NULL;
         }
@@ -420,36 +428,24 @@ measurement_list *create_measurement_list(size_t block_size) {
 int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement) {
     size_t num_measurements = list->number_of_measurements;
-
     if (num_measurements >= list->size) {
-        size_t new_size = list->size + list->block_size;
-        void *new_indices = realloc(list->indices, sizeof(uint32_t)*new_size);
+        size_t new_size = 2*list->size;
+        void *new_indices = realloc(list->indices, new_size*sizeof(uint32_t));
+        if (new_indices == NULL) return 1;
         void *new_measurements = 
-            realloc(list->measurements, sizeof(double*)*new_size);
-        if (new_indices == NULL || new_measurements == NULL) {
-            return 1;
-        } else {
-            list->size = new_size;
-            list->indices = (uint32_t*)new_indices;
-            list->measurements = (double**)new_measurements;
-        }
+            realloc(list->measurements, NUM_DATAS*new_size*sizeof(double));
+        if (new_measurements == NULL) return 1;
+        list->size = new_size;
+        list->indices = (uint32_t*)new_indices;
+        list->measurements = (double*)new_measurements;
     }
-
     list->indices[num_measurements] = index;
-    list->measurements[num_measurements] = malloc(NUM_DATAS*sizeof(double));
-    memcpy(list->measurements[num_measurements],measurement,NUM_DATAS*sizeof(double));
+    memcpy(&list->measurements[NUM_DATAS*num_measurements], measurement, NUM_DATAS*sizeof(double));
     ++list->number_of_measurements;
-
     return 0;
 }
 
 void delete_measurement_list(measurement_list *list) {
-    for (size_t i = 0; i < list->number_of_measurements; i++) {
-        if (list->indices[i] != UINT32_MAX) {
-            free(list->measurements[i]);
-        }
-        // free(list->measurements[i]);
-    }
     free(list->indices);
     free(list->measurements);
     free(list);
@@ -539,7 +535,7 @@ void compute_observables(double *trace_array, double *prop_num, int32_t spos, co
 
 double *get_unit_configuration() {
     double *V;
-    V = (double*)calloc(CLENGTH, sizeof(double));
+    V = (double*)malloc(CLENGTH*sizeof(double));
 
     unit_config(V);
 
@@ -548,7 +544,8 @@ double *get_unit_configuration() {
 
 double *read_configuration(char *config) {
     double *V;
-    V = (double*)calloc(CLENGTH, sizeof(double));
+    // CHECK
+    V = (double*)malloc(CLENGTH*sizeof(double));
 
     char header[1000];
     bzero(header, 1000*sizeof(char));
@@ -570,7 +567,7 @@ double *random_gauge_transform(double *V) {
     // for gauge invariance check
     
     double *Om;
-    Om = (double*)calloc(CLENGTH, sizeof(double));
+    Om = (double*)malloc(OLENGTH*sizeof(double));
     rnd_gauge_tr(Om);
     transform(V, V, Om);
     return Om;
@@ -578,7 +575,7 @@ double *random_gauge_transform(double *V) {
 
 double *copy_configuration(double *V) {
     double *U;
-    U = (double*)calloc(CLENGTH, sizeof(double));
+    U = (double*)malloc(CLENGTH*sizeof(double));
     memcpy(U, V, sizeof(double)*CLENGTH);
     return U;
 }
@@ -625,7 +622,7 @@ void write_data_to_file(measurement_list *list, char *data_path) {
     data_file = fopen(data_path, "ab");
     for (size_t i = 0; i < list->number_of_measurements; i++) {
         fwrite(&list->indices[i], sizeof(uint32_t), 1, data_file);
-        fwrite(list->measurements[i], sizeof(double), NUM_DATAS, data_file);
+        fwrite(&list->measurements[NUM_DATAS*i], sizeof(double), NUM_DATAS, data_file);
     }
     fclose(data_file);
 }
@@ -640,10 +637,8 @@ measurement_list *read_data_from_file(char *data_path) {
             num_read = 0;
             uint32_t index;
             double measurement[NUM_DATAS];
-            /*double mm[NUM_DATAS];*/
             num_read += fread(&index, sizeof(uint32_t), 1, data_file);
             num_read += fread(measurement, sizeof(double), NUM_DATAS, data_file);
-            /*memcpy(mm, measurement, NUM_DATAS*sizeof(double));*/
             if (num_read == NUM_DATAS+1) {
                 add_measurement_to_list(list, index, measurement);
             } else {
@@ -811,7 +806,7 @@ int32_t ssl2sa_alloc(char *s, char **a) {
         int32_t ri = 0;
         while (1) {
             if ( s[i] == ' ' || s[i] == '\0') {
-                *(a+c) = calloc(i-ri+1, sizeof(char));
+                *(a+c) = malloc((i-ri+1)*sizeof(char));
                 strncpy(*(a+c), s+ri, i-ri);
                 ri = i + 1;
                 c++;
@@ -913,7 +908,7 @@ void do_source_average(input_parameters *input) {
                 exit(1);
             }
             for (size_t i = 0; i < NUM_DATAS; i++) {
-                averaged_data[i] += ordered_data->measurements[lattice_s][i];
+                averaged_data[i] += ordered_data->measurements[NUM_DATAS*lattice_s+i];
             }
         }
 
@@ -931,15 +926,16 @@ void do_source_average(input_parameters *input) {
     } // loop
 }
 
-measurement_list *create_full_measurement_list(size_t block_size) {
+measurement_list *create_full_measurement_list(size_t size) {
     measurement_list *list = malloc(sizeof(measurement_list));
     if (list != NULL) {
-        list->number_of_measurements = block_size;
-        list->size = block_size;
-        list->block_size = block_size;
-        list->indices = malloc(sizeof(uint32_t)*block_size);
-        list->measurements = malloc(sizeof(double*)*block_size);
+        list->number_of_measurements = size;
+        list->size = size;
+        list->indices = malloc(size*sizeof(uint32_t));
+        list->measurements = malloc(NUM_DATAS*size*sizeof(double));
         if (list->indices == NULL || list->measurements == NULL) {
+            free(list->indices);
+            free(list->measurements);
             free(list);
             return NULL;
         }
@@ -949,9 +945,7 @@ measurement_list *create_full_measurement_list(size_t block_size) {
 
 measurement_list *read_data_from_file_in_order(char *data_path) {
     measurement_list *list = create_full_measurement_list(LVOLUME);
-
     memset(list->indices, UINT32_MAX, LVOLUME*sizeof(uint32_t));
-
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
@@ -963,17 +957,14 @@ measurement_list *read_data_from_file_in_order(char *data_path) {
             num_read += fread(measurement, sizeof(double), NUM_DATAS, data_file);
             if (num_read == NUM_DATAS+1) {
                 list->indices[index] = index;
-                list->measurements[index] = malloc(2*sizeof(double));
-                memcpy(list->measurements[index],
+                memcpy(&list->measurements[NUM_DATAS*index],
                        measurement,2*sizeof(double));
             } else {
                 break;
             }
         }
-
         fclose(data_file);
     }
-
     return list;
 }
 
