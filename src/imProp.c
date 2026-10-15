@@ -33,10 +33,10 @@ typedef struct {
 
 // Struct for input parameters
 typedef struct {
-    char config[100];
+    char config[200];
     char config_number[10];
-    char data_dir[100];
-    char averaged_data_dir[100];
+    char data_dir[200];
+    char averaged_data_dir[200];
     int32_t num_sources;
     int32_t shape[4];
     int32_t r_direction[4];
@@ -172,7 +172,7 @@ void do_run_for_config(input_parameters *input) {
             .mu_b = mu_x};
         setup_loop_parameters(&loop);
 
-        char data_path[400];
+        char data_path[250];
         create_data_path(data_path, input, ratioStr, tStr, bStr); 
 
         size_t existantSourceNumber; 
@@ -241,19 +241,11 @@ void hamiltonian(double r, double w, double *result, double *layer, double *Ulay
     int32_t blpos = mod(lpos-1, L); //bwd site pos
     int32_t flpos = mod(lpos+1, L); //fwd site pos
 
-    double fsite[X], bsite[X], site[X];
-    double flink[X], blink[X];
+    double fsite[X], bsite[X];
 
-    memcpy(fsite,&layer[X*flpos],sizeof(fsite));
-    memcpy(bsite,&layer[X*blpos],sizeof(bsite));
-    memcpy(site,&layer[X*lpos],sizeof(site));
-
-    memcpy(flink,&Ulayer[X*lpos],sizeof(flink));
-    adjoint(flink, flink);
-    memcpy(blink,&Ulayer[X*blpos],sizeof(blink));
-
-    matmul(fsite, fsite, flink);
-    matmul(bsite, bsite, blink);
+    matmul_na_nc(fsite, &layer[X*flpos], &Ulayer[X*lpos]);
+    matmul_nc(bsite, &layer[X*blpos], &Ulayer[X*blpos]);
+    double *site = &layer[X*lpos]; // this can simply be a pointer since it doesn't multiply links
 
     // I have decided to just put both derivatives in the same function. 
     // Giving them separate functions seems unnecessary, and the way I was doing it would have involved redundant copy operations.
@@ -298,14 +290,11 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X);
     }
 
-    // double coef = (double)edir/(2*n); // TODO: this is probaby incorrect
     double coef = (double)1.0/(2*n);
     double coef2 = 0.5*coef;
-    // double coef2 = 0.0;
 
     // also initiliaze arrays for iterative updates
     double fbder[X], update[X];
-    double Ut[X];
 
     // iterators
     int32_t i, j, k, tn;
@@ -341,8 +330,8 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         // U^+(tprev)
         if (edir == 1) {
             for(j = 0; j < width; j++) {
-                get_link(Ut,U,D*(spos+step*j)+mu_e);
-                matmul(&prop[X*j],&prop[X*j],Ut);
+                int64_t pos = X*(D*(spos+step*j)+mu_e);
+                matmul(&prop[X*j],&prop[X*j],&U[pos]);
             }
         }
 
@@ -354,9 +343,8 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         // U^+(tprev)
         if (edir == -1) {
             for(j = 0; j < width; j++) {
-                get_link(Ut,U,D*(spos+step*j)+mu_e);
-                adjoint(Ut,Ut);
-                matmul(&prop[X*j],&prop[X*j],Ut);
+                int64_t pos = X*(D*(spos+step*j)+mu_e);
+                matmul_na(&prop[X*j],&prop[X*j],&U[pos]);
             }
         }
 
@@ -411,8 +399,6 @@ void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width,
 
     double layer[width*X]; // chocolate cake
 
-    double Ub[X];
-
     // iterators
     int32_t i, j;
     for (i = 0; i != bsteps; i++) { 
@@ -421,8 +407,8 @@ void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width,
 
         if (bdir == 1) {
             for(j = 0; j < width; j++) {
-                get_link(Ub,U,D*(spos+step*j)+bmu);
-                matmul(&layer[X*j],&layer[X*j],Ub);
+                int64_t pos = X*(D*(spos+step*j)+bmu);
+                matmul(&layer[X*j],&layer[X*j],&U[pos]);
             }
         }
 
@@ -431,9 +417,8 @@ void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width,
 
         if (bdir == -1) {
             for(j = 0; j < width; j++) {
-                get_link(Ub,U,D*(spos+step*j)+bmu);
-                adjoint(Ub,Ub);
-                matmul(&layer[X*j],&layer[X*j],Ub);
+                int64_t pos = X*(D*(spos+step*j)+bmu);
+                matmul_na(&layer[X*j],&layer[X*j],&U[pos]);
             }
         }
 
@@ -680,7 +665,7 @@ void create_info_file(char **inputs) {
 }
 
 void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str) {
-    char data_sub_dir[400];
+    char data_sub_dir[215];
     sprintf(data_sub_dir, "%s/r%sb%st%s", input->data_dir, 
             r_str, b_str, t_str);
     mkdir(data_sub_dir, 0755);
@@ -772,12 +757,12 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     };
     size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 7, 6, 6, 6, 7, 7 };
 
-    char PARAM_STRINGS[NUM_PARAMS][100];
+    char PARAM_STRINGS[NUM_PARAMS][200];
 
     input_parameters *input;
     input = malloc(sizeof(input_parameters));
 
-    char line[100];
+    char line[200];
 
     FILE *infile = fopen(file_name, "r");
     if (infile == NULL) {
@@ -785,7 +770,7 @@ input_parameters *read_input_file_to_struct(char *file_name) {
         exit(1);
     }
 
-    while( fgets(line, 100, infile) != NULL) {
+    while( fgets(line, 200, infile) != NULL) {
         int res;
         for (size_t i = 0; i < NUM_PARAMS; ++i) {
             res = memcmp(line, PARAM_LABELS[i], PARAM_SIZES[i]);
@@ -966,7 +951,7 @@ void do_source_average(input_parameters *input) {
         char *b_str = input->b_list[j];
         char *t_str = input->t_list[k];
 
-        char data_path[400];
+        char data_path[250];
         create_data_path(data_path, input, r_str, t_str, b_str); 
 
         double averaged_data[NUM_DATAS];
@@ -1049,7 +1034,7 @@ measurement_list *read_data_from_file_in_order(char *data_path) {
 
 void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str, input_parameters *input) {
     // code to write to file
-    char averaged_data_path[200];
+    char averaged_data_path[215];
     sprintf(averaged_data_path, "%s/c%s.tsv", 
             input->averaged_data_dir, input->config_number);
 

@@ -1,15 +1,16 @@
 CC        := gcc
+AR				:= gcc-ar
 SRC_DIR   := src
 BUILD_DIR := build
 
 CPPFLAGS  := -I$(SRC_DIR)
 DEPFLAGS  := -MMD -MP
-CFLAGS    := -Wall -Wextra -fopenmp
-LDFLAGS   := -L$(BUILD_DIR) -fopenmp
+CFLAGS    := -Wall -Wextra -fopenmp -O3 -flto -march=native -ffp-contract=off
+LDFLAGS   := -L$(BUILD_DIR) -fopenmp -flto
 # Order matters for static libs: dependents first, dependencies last
-LDLIBS    := -lfileIO -lapelib -lsu3lib -lmatops -lsizes -llapack -lm
+LDLIBS    := -lfileIO -lapelib -lsu3lib -lmatops -llapack -lm
 
-LIBS      := sizes fileIO matops su3lib apelib
+LIBS      := fileIO matops su3lib apelib
 LIBFILES  := $(LIBS:%=$(BUILD_DIR)/lib%.a)
 
 # Override on the command line, e.g.  make file=source_avg_num

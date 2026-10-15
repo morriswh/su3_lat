@@ -198,15 +198,6 @@ void get_index(int64_t i) {
     printf("%ld , %ld , %ld , %ld \n", x, y, z, t);
 }
 
-void get_link(double *link, double *U, int64_t pos) {
-    pos = mod(pos, LLENGTH);
-    pos *= X;
-    memcpy(link,&U[pos],sizeof(double)*X);
-    // for (int64_t i = 0; i < X; i++) {
-    //     link[i] = U[pos+i];
-    // }
-}
-
 void get_site(double *site, double *S, int64_t spos) {
     spos = mod(spos, LVOLUME);
     spos *= X;
@@ -233,71 +224,6 @@ int64_t ipow(int64_t base, int64_t exp)
     return result;
 }
 
-int64_t mod(int64_t value, int64_t period) {
-    // avoid taking unnecessary operations
-    if (value >= 0 && value < period) {
-        return value;
-    }
-    else {
-        return (value%period + period)%period;
-    }
-    // return (value%period + period)%period;
-}
-
-void matmul(double *z, double *x, double *y) {
-    double u[X];
-    double v[X];
-    memcpy(u,x,X*sizeof(double));
-    memcpy(v,y,X*sizeof(double));
-    // for (int64_t i = 0; i < X; i++) {
-    //     u[i] = x[i];
-    //     v[i] = y[i];
-    // }
-
-    z[0]  = u[0]*v[0]   - u[1]*v[1]   + u[2]*v[6]          // m[0] + i m[1]     m[2] + i m[3]     m[4] + i m[5]
-          - u[3]*v[7]   + u[4]*v[12]  - u[5]*v[13];        // 
-    z[1]  = u[0]*v[1]   + u[1]*v[0]   + u[2]*v[7]          // 
-          + u[3]*v[6]   + u[4]*v[13]  + u[5]*v[12];        // 
-    z[2]  = u[0]*v[2]   - u[1]*v[3]   + u[2]*v[8]          // m[6] + i m[7]     m[8] + i m[9]     m[10] + i m[11]
-          - u[3]*v[9]   + u[4]*v[14]  - u[5]*v[15];        // 
-    z[3]  = u[0]*v[3]   + u[1]*v[2]   + u[2]*v[9]          // 
-          + u[3]*v[8]   + u[4]*v[15]  + u[5]*v[14];        // 
-    z[4]  = u[0]*v[4]   - u[1]*v[5]   + u[2]*v[10]         // m[12] + i m[13]   m[14] + i m[15]   m[16] + i m[17]
-          - u[3]*v[11]  + u[4]*v[16]  - u[5]*v[17];
-    z[5]  = u[0]*v[5]   + u[1]*v[4]   + u[2]*v[11]
-          + u[3]*v[10]  + u[4]*v[17]  + u[5]*v[16];
-    z[6]  = u[6]*v[0]   - u[7]*v[1]   + u[8]*v[6]
-          - u[9]*v[7]   + u[10]*v[12] - u[11]*v[13];
-    z[7]  = u[6]*v[1]   + u[7]*v[0]   + u[8]*v[7]
-          + u[9]*v[6]   + u[10]*v[13] + u[11]*v[12];
-    z[8]  = u[6]*v[2]   - u[7]*v[3]   + u[8]*v[8]
-          - u[9]*v[9]   + u[10]*v[14] - u[11]*v[15];
-    z[9]  = u[6]*v[3]   + u[7]*v[2]   + u[8]*v[9]
-          + u[9]*v[8]   + u[10]*v[15] + u[11]*v[14];
-    z[10] = u[6]*v[4]   - u[7]*v[5]   + u[8]*v[10]
-          - u[9]*v[11]  + u[10]*v[16] - u[11]*v[17];
-    z[11] = u[6]*v[5]   + u[7]*v[4]   + u[8]*v[11]
-          + u[9]*v[10]  + u[10]*v[17] + u[11]*v[16];
-    z[12] = u[12]*v[0]  - u[13]*v[1]  + u[14]*v[6]
-          - u[15]*v[7]  + u[16]*v[12] - u[17]*v[13];
-    z[13] = u[12]*v[1]  + u[13]*v[0]  + u[14]*v[7]
-          + u[15]*v[6]  + u[16]*v[13] + u[17]*v[12];
-    z[14] = u[12]*v[2]  - u[13]*v[3]  + u[14]*v[8]
-          - u[15]*v[9]  + u[16]*v[14] - u[17]*v[15];
-    z[15] = u[12]*v[3]  + u[13]*v[2]  + u[14]*v[9]
-          + u[15]*v[8]  + u[16]*v[15] + u[17]*v[14];
-    z[16] = u[12]*v[4]  - u[13]*v[5]  + u[14]*v[10]
-          - u[15]*v[11] + u[16]*v[16] - u[17]*v[17];
-    z[17] = u[12]*v[5]  + u[13]*v[4]  + u[14]*v[11]
-          + u[15]*v[10] + u[16]*v[17] + u[17]*v[16];
-}
-
-void cmmul(double *z, double c, double *x) {
-    for (int32_t i = 0; i < X; ++i) {
-        z[i] = c*x[i];
-    }
-}
-
 void immul(double *z, double c, double *x) {
     // multiply an imaginary number by a complex matrix
     for (int32_t i = 0; i < X/2; ++i) {
@@ -313,31 +239,6 @@ void matadd(double *z, double *x, double *y) {
     }
 }
 
-void adjoint(double *xc, double *x) {
-    double y[X];
-    for (int64_t i = 0; i < X; i++) {
-        y[i] = x[i];
-    }
-    xc[0] = y[0];       // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]
-    xc[1] = -y[1];      // 
-    xc[2] = y[6];       // 
-    xc[3] = -y[7];      // 
-    xc[4] = y[12];      // m[6] + i m[7]         m[8] + i m[9]         m[10] + i m[11]
-    xc[5] = -y[13];     // 
-    xc[6] = y[2];       // 
-    xc[7] = -y[3];      // 
-    xc[8] = y[8];       // m[12] + i m[13]       m[14] + i m[15]       m[16] + i m[17]
-    xc[9] = -y[9];
-    xc[10] = y[14];
-    xc[11] = -y[15];
-    xc[12] = y[4];
-    xc[13] = -y[5];
-    xc[14] = y[10];
-    xc[15] = -y[11];
-    xc[16] = y[16];
-    xc[17] = -y[17];
-}
-
 void print_link(double *link) {
     // printf("[(%lf)+1j*(%lf),(%lf)+1j*(%lf),(%lf)+1j*(%lf)]\n",
     //        link[0], link[1], link[2], link[3], link[4], link[5]);
@@ -350,11 +251,6 @@ void print_link(double *link) {
            link[0], link[1], link[2], link[3], link[4], link[5],
            link[6], link[7], link[8], link[9], link[10], link[11],
            link[12], link[13], link[14], link[15], link[16], link[17]);
-}
-
-void trace(double *result, double *matrix) {
-    result[0] = matrix[0] + matrix[8] + matrix[16];
-    result[1] = matrix[1] + matrix[9] + matrix[17];
 }
 
 void det(double *result, double *m) {
@@ -374,7 +270,7 @@ void det(double *result, double *m) {
     result[1] = min1_imag*m[0] + min1_real*m[1] - min2_imag*m[2] - min2_real*m[3] + min3_imag*m[4] + min3_real*m[5];
 }
 
-void plaquette(double *plaq, double *U, int64_t spos, int64_t mu, int64_t nu) {
+void plaquette(double *plaq, double *U, int64_t spos, int32_t mu, int32_t nu) {
     // spos is in LVOLUME now
     int64_t step_mu, step_nu, stride_mu, stride_nu;
 
@@ -439,7 +335,7 @@ void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
     #pragma omp parallel for private(i) reduction(+:splaq) reduction(+:tplaq)
     for (i = 0; i < LVOLUME; i++) {
         double tr[2], plaq[X], help = 0.0;
-        int64_t mu, nu;
+        int32_t mu, nu;
         for (mu = 0; mu < D-1; mu++) {
             for (nu = mu+1; nu < D-1; nu++) {
                 plaquette(plaq, U, i, mu, nu);
@@ -447,6 +343,7 @@ void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
                 help += tr[0];
             }
         }
+        nu = D-1;
         splaq = splaq + help;
         help = 0.0;
         for (mu = 0; mu < nu; mu++) {
@@ -862,3 +759,110 @@ void gauge_action(double *action, double *U) {
     *action = 2*beta*(3*T*L - sum);
 }
 
+/* frequently used functions
+ * made the below functions static inline functions because it apparently leads to increased efficiency
+ * see su3lib.h
+ */
+// void matmul(double *z, double *x, double *y) {
+//     double u[X];
+//     double v[X];
+//     memcpy(u,x,X*sizeof(double));
+//     memcpy(v,y,X*sizeof(double));
+//     // for (int64_t i = 0; i < X; i++) {
+//     //     u[i] = x[i];
+//     //     v[i] = y[i];
+//     // }
+//
+//     z[0]  = u[0]*v[0]   - u[1]*v[1]   + u[2]*v[6]          // m[0] + i m[1]     m[2] + i m[3]     m[4] + i m[5]
+//           - u[3]*v[7]   + u[4]*v[12]  - u[5]*v[13];        // 
+//     z[1]  = u[0]*v[1]   + u[1]*v[0]   + u[2]*v[7]          // 
+//           + u[3]*v[6]   + u[4]*v[13]  + u[5]*v[12];        // 
+//     z[2]  = u[0]*v[2]   - u[1]*v[3]   + u[2]*v[8]          // m[6] + i m[7]     m[8] + i m[9]     m[10] + i m[11]
+//           - u[3]*v[9]   + u[4]*v[14]  - u[5]*v[15];        // 
+//     z[3]  = u[0]*v[3]   + u[1]*v[2]   + u[2]*v[9]          // 
+//           + u[3]*v[8]   + u[4]*v[15]  + u[5]*v[14];        // 
+//     z[4]  = u[0]*v[4]   - u[1]*v[5]   + u[2]*v[10]         // m[12] + i m[13]   m[14] + i m[15]   m[16] + i m[17]
+//           - u[3]*v[11]  + u[4]*v[16]  - u[5]*v[17];
+//     z[5]  = u[0]*v[5]   + u[1]*v[4]   + u[2]*v[11]
+//           + u[3]*v[10]  + u[4]*v[17]  + u[5]*v[16];
+//     z[6]  = u[6]*v[0]   - u[7]*v[1]   + u[8]*v[6]
+//           - u[9]*v[7]   + u[10]*v[12] - u[11]*v[13];
+//     z[7]  = u[6]*v[1]   + u[7]*v[0]   + u[8]*v[7]
+//           + u[9]*v[6]   + u[10]*v[13] + u[11]*v[12];
+//     z[8]  = u[6]*v[2]   - u[7]*v[3]   + u[8]*v[8]
+//           - u[9]*v[9]   + u[10]*v[14] - u[11]*v[15];
+//     z[9]  = u[6]*v[3]   + u[7]*v[2]   + u[8]*v[9]
+//           + u[9]*v[8]   + u[10]*v[15] + u[11]*v[14];
+//     z[10] = u[6]*v[4]   - u[7]*v[5]   + u[8]*v[10]
+//           - u[9]*v[11]  + u[10]*v[16] - u[11]*v[17];
+//     z[11] = u[6]*v[5]   + u[7]*v[4]   + u[8]*v[11]
+//           + u[9]*v[10]  + u[10]*v[17] + u[11]*v[16];
+//     z[12] = u[12]*v[0]  - u[13]*v[1]  + u[14]*v[6]
+//           - u[15]*v[7]  + u[16]*v[12] - u[17]*v[13];
+//     z[13] = u[12]*v[1]  + u[13]*v[0]  + u[14]*v[7]
+//           + u[15]*v[6]  + u[16]*v[13] + u[17]*v[12];
+//     z[14] = u[12]*v[2]  - u[13]*v[3]  + u[14]*v[8]
+//           - u[15]*v[9]  + u[16]*v[14] - u[17]*v[15];
+//     z[15] = u[12]*v[3]  + u[13]*v[2]  + u[14]*v[9]
+//           + u[15]*v[8]  + u[16]*v[15] + u[17]*v[14];
+//     z[16] = u[12]*v[4]  - u[13]*v[5]  + u[14]*v[10]
+//           - u[15]*v[11] + u[16]*v[16] - u[17]*v[17];
+//     z[17] = u[12]*v[5]  + u[13]*v[4]  + u[14]*v[11]
+//           + u[15]*v[10] + u[16]*v[17] + u[17]*v[16];
+// }
+//
+// void adjoint(double *xc, double *x) {
+//     double y[X];
+//     for (int64_t i = 0; i < X; i++) {
+//         y[i] = x[i];
+//     }
+//     xc[0] = y[0];       // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]
+//     xc[1] = -y[1];      // 
+//     xc[2] = y[6];       // 
+//     xc[3] = -y[7];      // 
+//     xc[4] = y[12];      // m[6] + i m[7]         m[8] + i m[9]         m[10] + i m[11]
+//     xc[5] = -y[13];     // 
+//     xc[6] = y[2];       // 
+//     xc[7] = -y[3];      // 
+//     xc[8] = y[8];       // m[12] + i m[13]       m[14] + i m[15]       m[16] + i m[17]
+//     xc[9] = -y[9];
+//     xc[10] = y[14];
+//     xc[11] = -y[15];
+//     xc[12] = y[4];
+//     xc[13] = -y[5];
+//     xc[14] = y[10];
+//     xc[15] = -y[11];
+//     xc[16] = y[16];
+//     xc[17] = -y[17];
+// }
+//
+// void trace(double *result, double *matrix) {
+//     result[0] = matrix[0] + matrix[8] + matrix[16];
+//     result[1] = matrix[1] + matrix[9] + matrix[17];
+// }
+//
+// void cmmul(double *z, double c, double *x) {
+//     for (int32_t i = 0; i < X; ++i) {
+//         z[i] = c*x[i];
+//     }
+// }
+//
+// int64_t mod(int64_t value, int64_t period) {
+//     // avoid taking unnecessary operations
+//     if (value >= 0 && value < period) {
+//         return value;
+//     }
+//     else {
+//         return (value%period + period)%period;
+//     }
+//     // return (value%period + period)%period;
+// }
+//
+// void get_link(double *link, double *U, int64_t pos) {
+//     pos = mod(pos, LLENGTH);
+//     pos *= X;
+//     memcpy(link,&U[pos],sizeof(double)*X);
+//     // for (int64_t i = 0; i < X; i++) {
+//     //     link[i] = U[pos+i];
+//     // }
+// }

@@ -19,15 +19,16 @@ void inverse(double *a, double *b) {
     lapack_int *IPIV = malloc(NC*sizeof(int32_t));
     lapack_int info_rf, info_ri;
     lapack_complex_double work[16];
-    lapack_int lwork = 100*NC;
+    lapack_int lNC = NC;
+    lapack_int lwork = 100*lNC;
     //
     // info_rf = LAPACKE_zgetrf(LAPACK_ROW_MAJOR, NC, NC, (lapack_complex_double*)a, NC, IPIV);
     // info_ri = LAPACKE_zgetri(LAPACK_ROW_MAJOR, NC, (lapack_complex_double*)a, NC, IPIV);
     // LAPACKE_zgetrf(LAPACK_ROW_MAJOR, NC, NC, (lapack_complex_double*)a, NC, IPIV);
     // LAPACKE_zgetri(LAPACK_ROW_MAJOR, NC, (lapack_complex_double*)a, NC, IPIV);
 
-    LAPACK_zgetrf(&NC, &NC, (lapack_complex_double*)a, &NC, IPIV, &info_rf);
-    LAPACK_zgetri(&NC, (lapack_complex_double*)a, &NC, IPIV, work, &lwork, &info_ri);
+    LAPACK_zgetrf(&lNC, &lNC, (lapack_complex_double*)a, &lNC, IPIV, &info_rf);
+    LAPACK_zgetri(&lNC, (lapack_complex_double*)a, &lNC, IPIV, work, &lwork, &info_ri);
 
     transpose(a,a);
 
