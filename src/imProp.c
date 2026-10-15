@@ -68,7 +68,7 @@ typedef struct {
 // compute forward-backward derivative
 // void fbdelta(double *result, double *layer, double *Ulayer, int32_t lpos);
 // contains all operations including Wilson/mass term, also this has an overall opposite sign from the paper
-void hamiltonian(double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos);
+void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos);
 // compute LMN type propagator [add reference]
 void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
 		 int32_t width, int32_t mu_e, int32_t esteps, int32_t edir, double ratio, double w);
@@ -226,7 +226,7 @@ void do_run_for_config(input_parameters *input) {
             write_data_to_file(data_list, data_path);
             delete_measurement_list(data_list);
         }
-        #pragma omp barrier
+        // #pragma omp barrier // this wasn't needed
     } // triple
     } // for
     } // loop
@@ -235,9 +235,10 @@ void do_run_for_config(input_parameters *input) {
     free(sizes);
 }
 
-void hamiltonian(double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos) {
-    lpos = mod(lpos,L); //mod it just in case
+void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos) {
+    // this is not really a hamiltonian after what I've done to it
 
+    lpos = mod(lpos,L); //mod it just in case
     int32_t blpos = mod(lpos-1, L); //bwd site pos
     int32_t flpos = mod(lpos+1, L); //fwd site pos
 
@@ -248,12 +249,11 @@ void hamiltonian(double r, double w, double *result, double *layer, double *Ulay
     double *site = &layer[X*lpos]; // this can simply be a pointer since it doesn't multiply links
 
     // I have decided to just put both derivatives in the same function. 
-    // Giving them separate functions seems unnecessary, and the way I was doing it would have involved redundant copy operations.
     for (size_t i = 0; i < (size_t)X/2; i++) {
         size_t j = 2*i;
         //                     fwd-bwd derivative                              laplacian
-        result[j]   =  r*0.5*(fsite[j+1] - bsite[j+1]) - fabs(r)*w*0.5*(fsite[j]   + bsite[j]   - 2*site[j]);
-        result[j+1] = -r*0.5*(fsite[j]   - bsite[j]  ) - fabs(r)*w*0.5*(fsite[j+1] + bsite[j+1] - 2*site[j+1]);
+        result[j]   = coef*( r*0.5*(fsite[j+1] - bsite[j+1]) - fabs(r)*w*0.5*(fsite[j]   + bsite[j]   - 2*site[j]  ));
+        result[j+1] = coef*(-r*0.5*(fsite[j]   - bsite[j]  ) - fabs(r)*w*0.5*(fsite[j+1] + bsite[j+1] - 2*site[j+1]));
         // the index swapping in the fwd-bwd derivative accounts for the multiplication by imaginary number i
         // the overall minus sign is correct, laplacian is semi-negative definite
     }
@@ -264,12 +264,8 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         double w) {
 
     // this function is based on a result in arXiv:hep-lat/9205007
-    //
-    // need to add a description of variables and constants
-    //
 
     int64_t estep = ipow(L,mu_e); // since T is the last dimension, it won't effect the step size for any direction
-    // int64_t eperiod = L*estep; // TODO: L thould be T?
     int64_t eperiod = (mu_e == mu_t ? T : L)*estep;
 
     int64_t step = ipow(L,mu); // mu=0,1,2,3 // this one stays as L, it is the step size
@@ -280,7 +276,6 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     // we don't have to worry about boundaries
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
-    double layer[width*X];
     double helper[width*X];
     double Ulayer[width*X];
 
@@ -294,7 +289,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     double coef2 = 0.5*coef;
 
     // also initiliaze arrays for iterative updates
-    double fbder[X], update[X];
+    double update[X];
 
     // iterators
     int32_t i, j, k, tn;
@@ -303,25 +298,18 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         // (1-H0/2n)^n |_tprev
         tn = n;
         while (tn--) {
-            memcpy(layer, prop, sizeof(double)*width*X);
-
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
-                hamiltonian(ratio, w, fbder, layer, Ulayer, j); // fwd-bwd derivative
-                cmmul(update,coef,fbder);
+                hamiltonian(coef, ratio, w, update, prop, Ulayer, j); // fwd-bwd derivative
                 for (k = 0; k < X; k++) {
                     helper[X*j+k] = update[k];
-                    prop[X*j+k] -= update[k];
                 }
             }
 
-            memcpy(layer, helper, sizeof(double)*width*X);
-
             // apply the hamiltonian again to the result of the previous application to get H^2
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
-                hamiltonian(ratio, w, fbder, layer, Ulayer, j); // fwd-bwd derivative
-                cmmul(update,coef2,fbder);
+                hamiltonian(coef2, ratio, w, update, helper, Ulayer, j); // fwd-bwd derivative
                 for (k = 0; k < X; k++) {
-                    prop[X*j+k] += update[k];
+                    prop[X*j+k] += update[k] - helper[X*j+k];
                 }
             }
         }
@@ -331,12 +319,11 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         if (edir == 1) {
             for(j = 0; j < width; j++) {
                 int64_t pos = X*(D*(spos+step*j)+mu_e);
-                matmul(&prop[X*j],&prop[X*j],&U[pos]);
+                matmul_nc(&helper[X*j],&prop[X*j],&U[pos]);
             }
         }
 
         // prepare spos for next evol slice
-        // spos = mod(spos + edir*estep, LVOLUME);
     	  spos = spos - mod(spos, eperiod) + mod(spos+estep*edir, eperiod);
 
         // multiply time links if edir = -1
@@ -344,7 +331,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         if (edir == -1) {
             for(j = 0; j < width; j++) {
                 int64_t pos = X*(D*(spos+step*j)+mu_e);
-                matmul_na(&prop[X*j],&prop[X*j],&U[pos]);
+                matmul_na_nc(&helper[X*j],&prop[X*j],&U[pos]);
             }
         }
 
@@ -356,29 +343,23 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         // (1-H0/2n)^n |_t
         tn = n;
         while (tn--) {
-            memcpy(layer, prop, sizeof(double)*width*X);
-
             // TODO: this section and the similar one before could be abstracted, and probably made slightly faster
             for (j = 0; j < width; j++) { // scan across x direction
-                hamiltonian(ratio, w, fbder, layer, Ulayer, j); // Hamiltonian
-                cmmul(update, coef, fbder);
+                hamiltonian(coef, ratio, w, update, helper, Ulayer, j); // Hamiltonian
                 for (k = 0; k < X; k++) {
-                    helper[X*j+k] = update[k];
-                    prop[X*j+k]  -= update[k]; // this accounts for the identity operation, the '1' in (1-H0/2n)
+                    prop[X*j+k] = update[k];
                 }
             }
-
-            memcpy(layer, helper, sizeof(double)*width*X);
 
             // apply the hamiltonian again to the result of the previous application to get H^2
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
-                hamiltonian(ratio, w, fbder, layer, Ulayer, j); // fwd-bwd derivative
-                cmmul(update,coef2,fbder);
+                hamiltonian(coef2, ratio, w, update, prop, Ulayer, j); // fwd-bwd derivative
                 for (k = 0; k < X; k++) {
-                    prop[X*j+k] += update[k];
+                    helper[X*j+k] += update[k] - prop[X*j+k];
                 }
             }
         }
+        memcpy(prop, helper, sizeof(double)*width*X);
     }
 }
 
