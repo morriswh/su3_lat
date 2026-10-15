@@ -18,7 +18,7 @@
 #include "fileIO.h"
 
 #define LENGTH(X) (sizeof X / sizeof X[0])
-#define MAX_SOURCES 1048576 // 2**20
+#define MAX_SOURCES LVOLUME
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
@@ -91,7 +91,6 @@ double *read_configuration(char *config);
 void delete_configuration(double *V);
 double *random_gauge_transform(double *V);
 double *copy_configuration(double *V);
-int32_t *setup_parallization(int32_t *sizes_extent, int32_t num_sources);
 void create_info_file(char **inputs); // broken for now 
 void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str);
 void write_data_to_file(measurement_list *list, char *data_path);
@@ -143,10 +142,6 @@ int main(int32_t argc, char *argv[]) {
 }
 
 void do_run_for_config(input_parameters *input) {
-    // setup parallelization
-    int32_t sizes_extent;
-    int32_t *sizes = setup_parallization(&sizes_extent, input->num_sources);
-
     // allocate memory for this here so that so we're not doing it every iteration
     uint32_t *existant_sources;
     existant_sources = (uint32_t*)malloc(MAX_SOURCES * sizeof(uint32_t));
@@ -178,17 +173,17 @@ void do_run_for_config(input_parameters *input) {
         size_t existantSourceNumber; 
         get_existing_sources(&existantSourceNumber, existant_sources, data_path);
 
-        #pragma omp parallel for
-        for (int32_t parallel_s = 0; parallel_s < sizes_extent; parallel_s++) {
+        #pragma omp parallel
+        {
             // separate list for each thread, everything dumps to the same file
             measurement_list *data_list = 
-                create_measurement_list(input->num_sources/sizes_extent+1);
+                create_measurement_list(input->num_sources/omp_get_max_threads() + 1);
 
             // propagator, this is just an Lx1 array of 3x3 matrices, we don't need anything bigger for this
             double prop_num[loop.width*X];
 
-            for (int32_t s = sizes[parallel_s]; s < sizes[parallel_s+1]; s++) {
-
+            #pragma omp for schedule(dynamic, 4)
+            for (int32_t s = 0; s < input->num_sources; s++) {
                 // map source index to lattice index
                 int32_t lattice_s, lattice_zs;
                 source_grid(&lattice_s, &lattice_zs, loop.mu_r, s, input->num_sources);
@@ -221,18 +216,17 @@ void do_run_for_config(input_parameters *input) {
                     data_list = create_measurement_list(16);
                 }
             }
-
             #pragma omp critical
+
             write_data_to_file(data_list, data_path);
             delete_measurement_list(data_list);
         }
-        // #pragma omp barrier // this wasn't needed
     } // triple
     } // for
     } // loop
 
     free(existant_sources);
-    free(sizes);
+    // free(sizes);
 }
 
 void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos) {
@@ -426,8 +420,6 @@ measurement_list *create_measurement_list(size_t block_size) {
 int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement) {
     size_t num_measurements = list->number_of_measurements;
-    /*double mm[NUM_DATAS];*/
-    /*memcpy(mm, measurement, NUM_DATAS*sizeof(double));*/
 
     if (num_measurements >= list->size) {
         size_t new_size = list->size + list->block_size;
@@ -444,7 +436,6 @@ int64_t add_measurement_to_list(measurement_list *list, int64_t index,
     }
 
     list->indices[num_measurements] = index;
-    /*list->measurements[num_measurements] = mm;*/
     list->measurements[num_measurements] = malloc(NUM_DATAS*sizeof(double));
     memcpy(list->measurements[num_measurements],measurement,NUM_DATAS*sizeof(double));
     ++list->number_of_measurements;
@@ -587,36 +578,6 @@ double *copy_configuration(double *V) {
     U = (double*)calloc(CLENGTH, sizeof(double));
     memcpy(U, V, sizeof(double)*CLENGTH);
     return U;
-}
-
-int32_t *setup_parallization(int32_t *sizes_extent, int32_t num_sources) {
-    // Set up partition of sources for parallelization
-    int32_t num_threads = omp_get_max_threads();
-    int32_t *sizes;
-    sizes = (int32_t*)calloc(num_threads+1, sizeof(int32_t));
-    sizes[0] = 0; // This is sacrosanct
-    if ( num_threads == 1) {
-        *sizes_extent = 1;
-        sizes[1] = num_sources;
-    } else if (num_sources <= num_threads) {
-        *sizes_extent = num_sources;
-        for (int32_t i = 1; i < *sizes_extent+1; ++i) {
-            sizes[i] = 1;
-        }
-    } else {
-        *sizes_extent = num_threads;
-
-        int32_t high = num_sources/(*sizes_extent) + 1;
-        int32_t low = num_sources/(*sizes_extent);
-        int32_t num_high = num_sources%*sizes_extent;
-        for (int32_t i = 0; i < num_high; i++) {
-            sizes[i+1] = sizes[i] + high;
-        }
-        for (int32_t i = num_high; i < *sizes_extent; i++) {
-            sizes[i+1] = sizes[i] + low;
-        }
-    }
-    return sizes;
 }
 
 void create_info_file(char **inputs) {
