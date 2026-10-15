@@ -65,8 +65,6 @@ typedef struct {
 } loop_parameters;
 
 //// declaration of functions
-// compute forward-backward derivative
-// void fbdelta(double *result, double *layer, double *Ulayer, int32_t lpos);
 // contains all operations including Wilson/mass term, also this has an overall opposite sign from the paper
 void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos);
 // compute LMN type propagator [add reference]
@@ -75,13 +73,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
 // compute transverse links
 void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t bmu, 
                 int32_t width, int32_t bsteps, int32_t bdir);
-// create a struct containing dynamic list of measurements
-measurement_list *create_measurement_list(size_t block_size);
-// append a new measurement with lattice index to the list
-int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
-                            double *measurement);
-// delete the list
-void delete_measurement_list(measurement_list *list);
+
 void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
 void setup_loop_parameters(loop_parameters *loop);
 void compute_observables(double *trace_array, double *prop_num, int32_t spos, const int32_t zspos, 
@@ -93,17 +85,25 @@ double *random_gauge_transform(double *V);
 double *copy_configuration(double *V);
 void create_info_file(char **inputs); // broken for now 
 void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str);
-void write_data_to_file(measurement_list *list, char *data_path);
-measurement_list *read_data_from_file(char *data_path);
 void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
 void do_run_for_config(input_parameters *input);
+////functions for handling inputs
 input_parameters *read_input_file_to_struct(char *file_name);
 void delete_input_struct(input_parameters *input);
 void get_contents(char *out, char* in);
 int32_t ssl2sa_alloc(char *s, char **a);
 int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size);
 void print_input_struct_info(input_parameters *input);
+
+//// functions for handling and saving results of calculation
+measurement_list *create_measurement_list(size_t block_size);
+int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
+                            double *measurement);
+void delete_measurement_list(measurement_list *list);
+void write_data_to_file(measurement_list *list, char *data_path);
+measurement_list *read_data_from_file(char *data_path);
+
 //// functions for source averaging
 void do_source_average(input_parameters *input);
 measurement_list *read_data_from_file_in_order(char *data_path);
@@ -445,7 +445,10 @@ int64_t add_measurement_to_list(measurement_list *list, int64_t index,
 
 void delete_measurement_list(measurement_list *list) {
     for (size_t i = 0; i < list->number_of_measurements; i++) {
-        free(list->measurements[i]);
+        if (list->indices[i] != UINT32_MAX) {
+            free(list->measurements[i]);
+        }
+        // free(list->measurements[i]);
     }
     free(list->indices);
     free(list->measurements);
