@@ -39,11 +39,11 @@ typedef struct {
     int32_t num_sources;
     int32_t shape[4];
     int32_t r_direction[4];
-    char **r_list;
+    char (*r_list)[16];
     int32_t r_size;
-    char **t_list;
+    char (*t_list)[16];
     int32_t t_size;
-    char **b_list;
+    char (*b_list)[16];
     int32_t b_size;
     int32_t n; // iterations of (1-H0/2n)
     double w; // wilson parameter
@@ -91,6 +91,7 @@ void do_run_for_config(input_parameters *input);
 input_parameters *read_input_file_to_struct(char *file_name);
 void delete_input_struct(input_parameters *input);
 void get_contents(char *out, char* in);
+void get_string_array(char (**a)[16], int32_t *size, char *s);
 int32_t ssl2sa_alloc(char *s, char **a);
 int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size);
 void print_input_struct_info(input_parameters *input);
@@ -124,8 +125,9 @@ int main(int32_t argc, char *argv[]) {
     do_run_for_config(input);
 
     // // uncomment for gauge invariance check
-    // random_gauge_transform(V);
-    // do_run_for_config()
+    // printf("Redoing run after random gauge transformation.\n", time_spent);
+    // random_gauge_transform(input->U);
+    // do_run_for_config(input)
 
     delete_configuration(input->U);
 
@@ -734,17 +736,20 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     ssl2ia_fixed(PARAM_STRINGS[++index], input->shape, 4);
     ssl2ia_fixed(PARAM_STRINGS[++index], input->r_direction, 4);
 
-    input->t_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
-    input->t_list = malloc(input->t_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[index], input->t_list);
+    // input->t_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
+    // input->t_list = malloc(input->t_size*sizeof(char*));
+    // ssl2sa_alloc(PARAM_STRINGS[index], input->t_list);
+    get_string_array(&input->t_list, &input->t_size, PARAM_STRINGS[++index]);
 
-    input->b_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
-    input->b_list = malloc(input->b_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[index], input->b_list);
+    // input->b_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
+    // input->b_list = malloc(input->b_size*sizeof(char*));
+    // ssl2sa_alloc(PARAM_STRINGS[index], input->b_list);
+    get_string_array(&input->b_list, &input->b_size, PARAM_STRINGS[++index]);
 
-    input->r_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
-    input->r_list = malloc(input->r_size*sizeof(char*));
-    ssl2sa_alloc(PARAM_STRINGS[index], input->r_list);
+    // input->r_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
+    // input->r_list = malloc(input->r_size*sizeof(char*));
+    // ssl2sa_alloc(PARAM_STRINGS[index], input->r_list);
+    get_string_array(&input->r_list, &input->r_size, PARAM_STRINGS[++index]);
 
     input->n = atoi(PARAM_STRINGS[++index]);
     input->w = atof(PARAM_STRINGS[++index]);
@@ -761,15 +766,15 @@ input_parameters *read_input_file_to_struct(char *file_name) {
 }
 
 void delete_input_struct(input_parameters *input) {
-    for (int32_t i = 0; i < input->r_size; i++) {
-        free(input->r_list[i]);
-    }
-    for (int32_t i = 0; i < input->b_size; i++) {
-        free(input->b_list[i]);
-    }
-    for (int32_t i = 0; i < input->t_size; i++) {
-        free(input->t_list[i]);
-    }
+    // for (int32_t i = 0; i < input->r_size; i++) {
+    //     free(input->r_list[i]);
+    // }
+    // for (int32_t i = 0; i < input->b_size; i++) {
+    //     free(input->b_list[i]);
+    // }
+    // for (int32_t i = 0; i < input->t_size; i++) {
+    //     free(input->t_list[i]);
+    // }
     free(input->r_list);
     free(input->b_list);
     free(input->t_list);
@@ -787,6 +792,39 @@ void get_contents(char *out, char* in) {
         i++;
     }
     out[j] = '\0';
+}
+
+void get_string_array(char (**a)[16], int32_t *size, char *s) {
+    int32_t len = 8;
+    *a = (char(*)[16])malloc(len * sizeof **a);
+    *size = 0;
+
+    int32_t i = 0;
+    int32_t ri = 0;
+    while (1) {
+        if ( s[i] == ' ' || s[i] == '\0') {
+            int32_t entry_len = i-ri;
+            if (entry_len >= 16) {
+                printf("One or more inputs to T_LIST, B_LIST or R_LIST larger than 15 digits. This is pointless.\n");
+                exit(1);
+            }
+            strncpy((*a)[*size], s+ri, entry_len*sizeof(char));
+            (*a)[*size][i-ri] = '\0';
+            ri = i + 1;
+            *size += 1;
+            if (*size == len) {
+                void *new_array = (char(*)[16])realloc(*a, 2*len * sizeof **a);
+                if (new_array == NULL) {
+                    printf("realloc returned NULL array in get_string_array()\n");
+                    exit(1);
+                }
+                *a = new_array;
+                len *= 2;
+            }
+        }
+        if (s[i] == '\0') break;
+        i++;
+    }
 }
 
 int32_t ssl2sa_alloc(char *s, char **a) {
