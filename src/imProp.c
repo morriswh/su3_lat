@@ -53,10 +53,10 @@ typedef struct {
 
 // Struct for loop directions
 typedef struct {
-    const int32_t width;
     const int32_t mu_e;
     const int32_t mu_r;
     const int32_t mu_b;
+    int32_t width;
     int64_t bstep;
     int64_t bperiod;
     int64_t estep;
@@ -65,13 +65,12 @@ typedef struct {
 
 //// declaration of functions
 // contains all operations including Wilson/mass term, also this has an overall opposite sign from the paper
-void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos);
+void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t width, int32_t lpos);
 // compute LMN type propagator [add reference]
 void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
 		 int32_t width, int32_t mu_e, int32_t esteps, int32_t edir, double ratio, double w);
 // compute transverse links
-void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t bmu, 
-                int32_t width, int32_t bsteps, int32_t bdir);
+void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width, int32_t bmu, int32_t bsteps, int32_t bdir);
 
 void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
 void setup_loop_parameters(loop_parameters *loop);
@@ -123,27 +122,30 @@ int main(int32_t argc, char *argv[]) {
     print_input_struct_info(input);
 
     do_run_for_config(input);
+    do_source_average(input);
 
-    // // uncomment for gauge invariance check
-    // printf("Redoing run after random gauge transformation.\n", time_spent);
-    // random_gauge_transform(input->U);
-    // do_run_for_config(input)
+    // uncomment for gauge invariance check
+    printf("Redoing run after random gauge transformation.\n");
+    random_gauge_transform(input->U);
+
+    do_run_for_config(input);
+    do_source_average(input);
 
     delete_configuration(input->U);
 
-    double middle = omp_get_wtime();
-    double time_spent = middle - begin;
-    printf("Measurement elapsed time: %lfs\n", time_spent);
+    // double middle = omp_get_wtime();
+    // double time_spent = middle - begin;
+    // printf("Measurement elapsed time: %lfs\n", time_spent);
 
     /* do the source average here */
-    do_source_average(input);
+    // do_source_average(input);
 
     delete_input_struct(input);
 
     double end = omp_get_wtime();
-    time_spent = end - middle;
-    printf("Source average elapsed time : %lfs\n", time_spent);
-    time_spent = end - begin;
+    // time_spent = end - middle;
+    // printf("Source average elapsed time : %lfs\n", time_spent);
+    double time_spent = end - begin;
     printf("Total elapsed time: %lfs\n", time_spent);
 
     return 0;
@@ -153,6 +155,14 @@ void do_run_for_config(input_parameters *input) {
     // allocate memory for this here so that so we're not doing it every iteration
     uint32_t *existant_sources;
     existant_sources = (uint32_t*)malloc(MAX_SOURCES * sizeof(uint32_t));
+
+    // setup directions for evolution, transverse, etc.
+    loop_parameters loop = {
+        .mu_e = mu_z, 
+        .mu_r = mu_t, 
+        .mu_b = mu_x
+    };
+    setup_loop_parameters(&loop);
 
     // there is nothing wrong with a triple for loop when the situation demands it
     // don't be ashamed
@@ -166,14 +176,6 @@ void do_run_for_config(input_parameters *input) {
         double ratio = atof(input->r_list[i]);
         int32_t b = atoll(input->b_list[j]);
         int32_t t = atoll(input->t_list[k]);
-
-        // setup directions for evolution, transverse, etc.
-        loop_parameters loop = {
-            .width = L, 
-            .mu_e = mu_t, 
-            .mu_r = mu_z, 
-            .mu_b = mu_x};
-        setup_loop_parameters(&loop);
 
         char data_path[250];
         create_data_path(data_path, input, ratioStr, tStr, bStr); 
@@ -237,12 +239,12 @@ void do_run_for_config(input_parameters *input) {
     // free(sizes);
 }
 
-void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t lpos) {
+void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t width, int32_t lpos) {
     // this is not really a hamiltonian after what I've done to it
 
-    lpos = mod(lpos,L); //mod it just in case
-    int32_t blpos = mod(lpos-1, L); //bwd site pos
-    int32_t flpos = mod(lpos+1, L); //fwd site pos
+    lpos = mod(lpos,width); //mod it just in case
+    int32_t blpos = mod(lpos-1, width); //bwd site pos
+    int32_t flpos = mod(lpos+1, width); //fwd site pos
 
     double fsite[X], bsite[X];
 
@@ -301,7 +303,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         tn = n;
         while (tn--) {
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
-                hamiltonian(coef, ratio, w, update, prop, Ulayer, j); // fwd-bwd derivative
+                hamiltonian(coef, ratio, w, update, prop, Ulayer, width, j); // fwd-bwd derivative
                 for (k = 0; k < X; k++) {
                     helper[X*j+k] = update[k];
                 }
@@ -309,7 +311,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
 
             // apply the hamiltonian again to the result of the previous application to get H^2
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
-                hamiltonian(coef2, ratio, w, update, helper, Ulayer, j); // fwd-bwd derivative
+                hamiltonian(coef2, ratio, w, update, helper, Ulayer, width, j); // fwd-bwd derivative
                 for (k = 0; k < X; k++) {
                     prop[X*j+k] += update[k] - helper[X*j+k];
                 }
@@ -347,7 +349,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
         while (tn--) {
             // TODO: this section and the similar one before could be abstracted, and probably made slightly faster
             for (j = 0; j < width; j++) { // scan across x direction
-                hamiltonian(coef, ratio, w, update, helper, Ulayer, j); // Hamiltonian
+                hamiltonian(coef, ratio, w, update, helper, Ulayer, width, j); // Hamiltonian
                 for (k = 0; k < X; k++) {
                     prop[X*j+k] = update[k];
                 }
@@ -355,7 +357,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
 
             // apply the hamiltonian again to the result of the previous application to get H^2
             for (j = 0; j < width; j++) { // scan across (x,y,z,t) direction
-                hamiltonian(coef2, ratio, w, update, prop, Ulayer, j); // fwd-bwd derivative
+                hamiltonian(coef2, ratio, w, update, prop, Ulayer, width, j); // fwd-bwd derivative
                 for (k = 0; k < X; k++) {
                     helper[X*j+k] += update[k] - prop[X*j+k];
                 }
@@ -475,6 +477,7 @@ void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int3
 }
 
 void setup_loop_parameters(loop_parameters *loop) {
+    loop->width = (loop->mu_r == mu_t ? T : L);
     loop->bstep = ipow(L,loop->mu_b);
     loop->bperiod = L*loop->bstep; // period for b direction, not generalized to loop->mu_b=mu_t
     loop->estep = ipow(L,loop->mu_e);
@@ -681,7 +684,7 @@ int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
 //// functions for handling program input
 input_parameters *read_input_file_to_struct(char *file_name) {
     // TODO: update this so it better handles bad input files and extra spaces
-    size_t NUM_PARAMS = 12;
+    const size_t NUM_PARAMS = 12;
 
     char *PARAM_LABELS[] = {
         "CONFIG_FILE",
