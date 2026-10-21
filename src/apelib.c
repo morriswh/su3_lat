@@ -1,6 +1,7 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/resource.h>
 #include <inttypes.h>
@@ -15,80 +16,91 @@
 #include "su3lib.h"
 #include "apelib.h"
 
-void ape_smear(double *V, double *U, double alpha, int64_t sdir[4]) {
+static inline void inv_adjoint(double *restrict z, const double *restrict x) {
+    // x^{-dagger} = conj(cof(x)) / conj(det x), no LAPACK needed for 3x3
+    const double complex *a = (const double complex *)x;
+    double complex c[9];
+    // cofactor rows: r0 = r1 x r2, r1 = r2 x r0, r2 = r0 x r1
+    c[0] = a[4]*a[8] - a[5]*a[7];
+    c[1] = a[5]*a[6] - a[3]*a[8];
+    c[2] = a[3]*a[7] - a[4]*a[6];
+    c[3] = a[7]*a[2] - a[8]*a[1];
+    c[4] = a[8]*a[0] - a[6]*a[2];
+    c[5] = a[6]*a[1] - a[7]*a[0];
+    c[6] = a[1]*a[5] - a[2]*a[4];
+    c[7] = a[2]*a[3] - a[0]*a[5];
+    c[8] = a[0]*a[4] - a[1]*a[3];
+    const double complex d = a[0]*c[0] + a[1]*c[1] + a[2]*c[2];
+    const double complex s = conj(1.0/d);
+    double complex *o = (double complex *)z;
+    for (int k = 0; k < 9; k++) {
+        o[k] = conj(c[k])*s;
+    }
+}
 
+void newton_reunit(double *m) {
+    double detm[2];
+    det(detm, m);
+    const double complex s = 1.0/cpow(detm[0] + detm[1]*I, 1.0/3.0);
+
+    double x[X], xai[X];
+    double complex *xc = (double complex *)x;
+    const double complex *mc = (const double complex *)m;
+    for (int32_t i = 0; i < 9; i++) {
+        xc[i] = s*mc[i];
+    }
+
+    for (int32_t it = 0; it < 100; it++) {
+        inv_adjoint(xai, x);
+        double delta = 0.0;
+
+        for (int32_t i = 0; i < X; i++) {
+            const double xn = 0.5*(x[i] + xai[i]);
+            delta += fabs(xn - x[i]);
+            x[i] = xn;
+        }
+
+        if (delta < 1e-9) {
+            break;
+        }
+    }
+    memcpy(m, x, X*sizeof(double));
+}
+
+void ape_smear(double *restrict V, double *restrict U, const double alpha, const bool sdir[D]) {
     // make coefficients
-    double one_minus_alpha = 1 - alpha;
-    double alpha_div_six = alpha/6.0;
+    int32_t n_mu = 0;
+    for (int32_t mu = 0; mu < D; mu++) if(sdir[mu]) n_mu++;
+    const double alpha_norm = alpha / (2.0 * (n_mu -1));
+    const double one_minus_alpha = 1 - alpha;
 
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for schedule(static)
     for (int64_t i = 0; i < LVOLUME; i++) {
-        for (int64_t mu = 0; mu < D; mu++) {
-            if ( sdir[mu] == 1 ) {
-                double base[X], staple[X], staple_sum[X];
-                bzero(staple_sum, sizeof(staple_sum));
-                memcpy(base, &U[X*(D*i + mu)], sizeof(double)*X);
-                for (int64_t nu = 0; nu < D; nu++) {
-                    if ( sdir[nu] == 0 || nu == mu ) {
-                        continue;
-                    }
-                    else {
-                        staples(staple, U, i, mu, nu);
-                        for (int64_t j = 0; j < X; j++) {
-                            staple_sum[j] += staple[j];
-                        }
-                    }
-                }
-                cmmul(base, one_minus_alpha, base);
-                cmmul(staple_sum, alpha_div_six, staple_sum);
-                for (int64_t j = 0; j < X; j++) {
-                    base[j] += staple_sum[j];
-                }
-                memcpy(&V[X*(D*i + mu)], base, sizeof(double)*X);
-                newton_reunit(&V[X*(D*i + mu)]);
-            }
-            else {
+        for (int32_t mu = 0; mu < D; mu++) {
+            if ( !sdir[mu] ) {
                 memcpy(&V[X*(D*i + mu)], &U[X*(D*i + mu)], sizeof(double)*X);
+                continue;
             }
-        }
-    }
-}
-
-void ape_smear_fast(double *V, double *U, double alpha, int64_t sdir[4]) {
-
-    // make coefficients
-    double one_minus_alpha = 1 - alpha;
-    double alpha_div_six = alpha/6.0;
-
-    memcpy(V, U, sizeof(double)*CLENGTH);
-
-    #pragma omp parallel for collapse(2)
-    for (int64_t i = 0; i < LVOLUME; i++) {
-        for (int64_t mu = 0; mu < D; mu++) {
-            if ( sdir[mu] == 1 ) {
-                double staple[X], staple_sum[X];
-                bzero(staple_sum, sizeof(staple_sum));
-                for (int64_t nu = 0; nu < D; nu++) {
-                    if ( sdir[nu] != 0 && nu != mu ) {
-                        staples(staple, U, i, mu, nu);
-                        for (int64_t j = 0; j < X; j++) {
-                            staple_sum[j] += staple[j];
-                        }
+            double staple[X], staple_sum[X];
+            memset(staple_sum, 0, sizeof(staple_sum));
+            for (int32_t nu = 0; nu < D; nu++) {
+                if ( sdir[nu] && nu != mu ) {
+                    staples(staple, U, i, mu, nu);
+                    for (int32_t j = 0; j < X; j++) {
+                        staple_sum[j] += staple[j];
                     }
                 }
-                cmmul(&V[X*(D*i + mu)], one_minus_alpha, &V[X*(D*i + mu)]);
-                cmmul(staple_sum, alpha_div_six, staple_sum);
-                for (int64_t j = 0; j < X; j++) {
-                    V[X*(D*i + mu)+j] += staple_sum[j];
-                }
-                newton_reunit(&V[X*(D*i + mu)]);
             }
+            for (int32_t j = 0; j < X; j++) {
+                V[X*(D*i + mu)+j] = one_minus_alpha * U[X*(D*i + mu)+j] + alpha_norm * staple_sum[j];
+            }
+            newton_reunit(&V[X*(D*i + mu)]);
         }
     }
 }
 
+// 
 void gram_schmidt(double *U) {
-
     int64_t i;
     #pragma omp parallel for private(i)
     for (i = 0; i < LLENGTH; i++) {
@@ -154,11 +166,9 @@ void gram_schmidt(double *U) {
         U[p+17] = - (U[p]*U[p+9] + U[p+1]*U[p+8])
                   + (U[p+2]*U[p+7] + U[p+3]*U[p+6]); // im(u1.v2-u2.v1)
     }
-
 }
 
 void gram_schmidt_per(double *link) {
-
     double temp[X];
     double dot_real, dot_imag;
     double norm_u2, norm_u;
@@ -218,79 +228,4 @@ void gram_schmidt_per(double *link) {
               - (link[2]*link[6] - link[3]*link[7]); // re(u1.v2-u2.v1)
     link[17] = - (link[0]*link[9] + link[1]*link[8])
               + (link[2]*link[7] + link[3]*link[6]); // im(u1.v2-u2.v1)
-    
 }
-
-void newton_reunit(double *m) {
-
-    // Either rewrite this without using complex.h, or rewrite everything
-    // to use complex.h. Might be better to just do that
-    //
-    /*union {*/
-    /*    double m[6];*/
-    /*    double complex mc[3];*/
-    /*} mm; */
-
-    double complex mc[9];
-    /*for (int64_t i = 0; i < 9; i++) {*/
-    /*    mc[i] = m[2*i] + m[2*i+1]*I;*/
-    /*}*/
-    memcpy(mc,m,sizeof(double)*X);
-
-    double detm[2];
-    det(detm, m);
-
-    /*double complex detmc = detm[0] + detm[1]*I;*/
-    double complex detmc;
-    memcpy(&detmc,detm,sizeof(double)*2);
-
-    double complex one_div_det_cube_root = 1.0/cpowf(detmc, 1.0/3.0);
-
-    for (int64_t i = 0; i < 9; i++) {
-        mc[i] = one_div_det_cube_root*mc[i];
-    }
-
-    double delta = 1.0;
-
-    double x[X], xai[X], xn[X];
-    // You can directly memcpy a complex to a 2x length real array
-    memcpy(x, mc, X*sizeof(double));
-
-    double xa[X], xi[X];
-    while (delta > 1E-14) {
-
-        delta = 0.0;
-        adjoint(xa, x);
-        inverse(xai, xa);
-
-        for (int64_t i = 0; i < X; i++) {
-            xn[i] = 0.5*(x[i] + xai[i]);
-        }
-
-        adjoint(xa,xn);
-        matmul(xi,xa,xn);
-        for (int64_t i = 0; i < X; i++) {
-            delta += fabs(xi[i]);
-        }
-        delta -= 3.0;
-        // printf("%.15lf\n", delta);
-
-        memcpy(x, xn, X*sizeof(double));
-    }
-    /*print_link(xi);*/
-
-
-    memcpy(m, x, X*sizeof(double));
-
-}
-
-
-
-
-
-
-
-
-
-
-

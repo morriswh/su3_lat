@@ -16,6 +16,7 @@
 #include "sizes.h"
 #include "su3lib.h"
 #include "fileIO.h"
+#include "apelib.h"
 
 #define LENGTH(X) (sizeof X / sizeof X[0])
 #define MAX_SOURCES LVOLUME
@@ -47,6 +48,9 @@ typedef struct {
     int32_t b_size;
     int32_t n; // iterations of (1-H0/2n)
     double w; // wilson parameter
+    int32_t ape_steps;
+    double ape_alpha;
+    bool ape_directions[4];
 
     double *U;
 } input_parameters;
@@ -116,10 +120,25 @@ int main(int32_t argc, char *argv[]) {
         exit(1);
     }
 
-    double begin = omp_get_wtime();
+    // double begin, middle, end, time_spent; 
+    // begin = omp_get_wtime();
 
     input_parameters *input = read_input_file_to_struct(argv[1]);
     print_input_struct_info(input);
+
+    // // uncomment for smearing
+    printf("Smearing the figs.\n");
+    double *V = malloc(CLENGTH*sizeof(double));
+    double *tmp;
+    const bool sdir[D] = {false, true, true, true}; // smear all but x direction, which is our b_T direction
+    int32_t n_smear = 5;
+    for (int32_t i = 0; i < n_smear; i++) {
+        ape_smear(V, input->U, 0.3, sdir);
+        tmp = V;
+        V = input->U;
+        input->U = tmp;
+    }
+    delete_configuration(V);
 
     do_run_for_config(input);
     do_source_average(input);
@@ -127,26 +146,11 @@ int main(int32_t argc, char *argv[]) {
     // uncomment for gauge invariance check
     printf("Redoing run after random gauge transformation.\n");
     random_gauge_transform(input->U);
-
     do_run_for_config(input);
     do_source_average(input);
 
     delete_configuration(input->U);
-
-    // double middle = omp_get_wtime();
-    // double time_spent = middle - begin;
-    // printf("Measurement elapsed time: %lfs\n", time_spent);
-
-    /* do the source average here */
-    // do_source_average(input);
-
     delete_input_struct(input);
-
-    double end = omp_get_wtime();
-    // time_spent = end - middle;
-    // printf("Source average elapsed time : %lfs\n", time_spent);
-    double time_spent = end - begin;
-    printf("Total elapsed time: %lfs\n", time_spent);
 
     return 0;
 }
@@ -553,7 +557,7 @@ double *read_configuration(char *config) {
     V = (double*)malloc(CLENGTH*sizeof(double));
 
     char header[1000];
-    bzero(header, 1000*sizeof(char));
+    memset(header, 0, 1000*sizeof(char));
     int32_t header_length = 0;
 
     if (read_nersc(V, config, header, &header_length)!=0) {
@@ -634,7 +638,7 @@ void write_data_to_file(measurement_list *list, char *data_path) {
 
 measurement_list *read_data_from_file(char *data_path) {
     measurement_list *list = create_measurement_list(16);
-    printf("Looking for file: %s\n", data_path);
+    // printf("Looking for file: %s\n", data_path);
     FILE *data_file = fopen(data_path, "rb");
     if (data_file != NULL) {
         size_t num_read;
@@ -684,7 +688,6 @@ int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size) {
 //// functions for handling program input
 input_parameters *read_input_file_to_struct(char *file_name) {
     // TODO: update this so it better handles bad input files and extra spaces
-    const size_t NUM_PARAMS = 12;
 
     char *PARAM_LABELS[] = {
         "CONFIG_FILE",
@@ -698,9 +701,13 @@ input_parameters *read_input_file_to_struct(char *file_name) {
         "B_LIST",
         "R_LIST",
         "N_PARAM",
-        "W_PARAM"
+        "W_PARAM",
+        "APE_SMEAR_STEPS",
+        "APE_SMEAR_ALPHA",
+        "APE_DIRECTIONS"
     };
-    size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 7, 6, 6, 6, 7, 7 };
+    const size_t NUM_PARAMS = LENGTH(PARAM_LABELS);
+    size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 7, 6, 6, 6, 7, 7, 15, 15, 14};
 
     char PARAM_STRINGS[NUM_PARAMS][200];
 
@@ -727,37 +734,28 @@ input_parameters *read_input_file_to_struct(char *file_name) {
         }
     }
 
+    fclose(infile);
+
     size_t index = 0;
 
     memcpy(input->config, PARAM_STRINGS[index], sizeof(input->config));
     memcpy(input->config_number, PARAM_STRINGS[++index], sizeof(input->config_number));
     memcpy(input->data_dir, PARAM_STRINGS[++index], sizeof(input->data_dir));
     memcpy(input->averaged_data_dir, PARAM_STRINGS[++index], sizeof(input->averaged_data_dir));
-
     input->num_sources = atoi(PARAM_STRINGS[++index]);
-
     ssl2ia_fixed(PARAM_STRINGS[++index], input->shape, 4);
     ssl2ia_fixed(PARAM_STRINGS[++index], input->r_direction, 4);
-
-    // input->t_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
-    // input->t_list = malloc(input->t_size*sizeof(char*));
-    // ssl2sa_alloc(PARAM_STRINGS[index], input->t_list);
     get_string_array(&input->t_list, &input->t_size, PARAM_STRINGS[++index]);
-
-    // input->b_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
-    // input->b_list = malloc(input->b_size*sizeof(char*));
-    // ssl2sa_alloc(PARAM_STRINGS[index], input->b_list);
     get_string_array(&input->b_list, &input->b_size, PARAM_STRINGS[++index]);
-
-    // input->r_size = ssl2sa_alloc(PARAM_STRINGS[++index], NULL);
-    // input->r_list = malloc(input->r_size*sizeof(char*));
-    // ssl2sa_alloc(PARAM_STRINGS[index], input->r_list);
     get_string_array(&input->r_list, &input->r_size, PARAM_STRINGS[++index]);
-
     input->n = atoi(PARAM_STRINGS[++index]);
     input->w = atof(PARAM_STRINGS[++index]);
 
-    fclose(infile);
+    input->ape_steps = atoi(PARAM_STRINGS[++index]);
+    input->ape_alpha = atof(PARAM_STRINGS[++index]);
+    int32_t directions[4];
+    ssl2ia_fixed(PARAM_STRINGS[++index], directions, 4);
+    for (int32_t i = 0; i < 4; i++ ) input->ape_directions[i] = (bool)directions[i];
 
     // TODO: maybe have this separate
     input->U = read_configuration(input->config);
@@ -920,6 +918,11 @@ void print_input_struct_info(input_parameters *input) {
     }
     printf("Hamiltonian iterations, n: %d\n", input->n);
     printf("Wilson parameter, w: %lf\n", input->w);
+    printf("APE smearing information:\n");
+    printf("\t Smearing steps: %d\n", input->ape_steps);
+    printf("\t Smearing alpha: %lf\n", input->ape_alpha);
+    printf("\t Smearing directions: %d, %d, %d, %d\n",
+            input->ape_directions[0], input->ape_directions[1], input->ape_directions[2], input->ape_directions[3]);
 }
 
 //// functions for source averaging

@@ -163,7 +163,6 @@ void make_nersc_header(char *header, int32_t *header_length, double *U, char* la
         old_index++;
     };
     new_header[new_index] = '\0';
-    // // bzero(header, sizeof(char)*(*header_length));
     *header_length = new_index;
     memcpy(header, new_header, sizeof(char)*(*header_length+1));
 }

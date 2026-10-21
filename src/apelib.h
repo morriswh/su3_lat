@@ -1,10 +1,13 @@
 #ifndef APELIB_H
 #define APELIB_H
 
-void ape_smear(double *V, double *U, double alpha, int64_t sdir[4]);
-void ape_smear_fast(double *V, double *U, double alpha, int64_t sdir[4]);
+#include <stdbool.h>
+// #include <stdint.h>
+// #include "sizes.h"
+
+void newton_reunit(double *m);
+void ape_smear(double *restrict V, double *restrict U, const double alpha, const bool sdir[D]);
 void gram_schmidt(double *U);
 void gram_schmidt_per(double *link);
-void newton_reunit(double *m);
 
 #endif // !APELIB_H

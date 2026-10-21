@@ -130,6 +130,48 @@ static inline void matmul_na_nc(double *restrict z, const double *restrict x, co
     }
 }
 
+static inline void matmul_an_nc(double *restrict z, const double *restrict x, const double *restrict y) {
+    //no copy
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            // z_ij = sum_k conj(x_ki) * y_kj
+            double re = 0.0, im = 0.0;
+            for (int k = 0; k < 3; k++) {
+                const double xr = x[6*k + 2*i], xi = x[6*k + 2*i + 1];
+                const double yr = y[6*k + 2*j], yi = y[6*k + 2*j + 1];
+                // terms added one at a time, in the same order as matmul,
+                // so results match adjoint + matmul exactly
+                re += xr*yr;
+                re += xi*yi;
+                im += xr*yi;
+                im -= xi*yr;
+            }
+            z[6*i + 2*j]     = re;
+            z[6*i + 2*j + 1] = im;
+        }
+    }
+}
+
+static inline void matmul_as_nc(double *restrict z, const double *restrict x) {
+    //no copy // adjoint x self
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            // z_ij = sum_k conj(x_ki) * x_kj
+            double re = 0.0, im = 0.0;
+            for (int k = 0; k < 3; k++) {
+                const double xr = x[6*k + 2*i], xi = x[6*k + 2*i + 1];
+                const double yr = x[6*k + 2*j], yi = x[6*k + 2*j + 1];
+                re += xr*yr;
+                re += xi*yi;
+                im += xr*yi;
+                im -= xi*yr;
+            }
+            z[6*i + 2*j]     = re;
+            z[6*i + 2*j + 1] = im;
+        }
+    }
+}
+
 static inline void matmul_nc(double *restrict z, const double *restrict x, const double *restrict y) {
     // no copy
 

@@ -207,8 +207,7 @@ void get_site(double *site, double *S, int64_t spos) {
     // }
 }
 
-int64_t ipow(int64_t base, int64_t exp)
-{
+int64_t ipow(int64_t base, int64_t exp) {
     // borrowed this from a stackexchange post
     int64_t result = 1;
     for (;;)
@@ -611,73 +610,47 @@ void directional_sum(double *lattice, int64_t *directions,
     }
 }
 
-void staples(double *staple, double *U, int64_t spos, int64_t mu, int64_t nu) {
-    // spos is in LVOLUME now
-    int64_t step_mu, step_nu, stride_mu, stride_nu;
+static inline void site_coords(int64_t i, int64_t c[4]) {
+    c[0] = i % L;
+    c[1] = (i / L) % L;
+    c[2] = (i / LSQUARE) % L;
+    c[3] = i / LCUBE;
+}
 
-    if (mu == 0) {
-        step_mu = 1;
-        stride_mu = L;
-    }
-    else if (mu == 1) {
-        step_mu = L;
-        stride_mu = LSQUARE;
-    }
-    else if (mu == 2) {
-        step_mu = LSQUARE;
-        stride_mu = LCUBE;
-    }
-    else {
-        step_mu = LCUBE;
-        stride_mu = LVOLUME;
-    }
+static inline int64_t shift(int64_t i, const int64_t c[4], int mu, int dir) {
+    // site index one step from i in direction mu (dir = +1 or -1), periodic
+    static const int64_t step[4] = {1, L, LSQUARE, LCUBE};
+    const int64_t ext = (mu == 3 ? T : L);
+    const int64_t n = c[mu] + dir;
+    const int64_t wrap = (n < 0) ? ext : (n >= ext ? -ext : 0);
+    return i + (dir + wrap)*step[mu];
+}
 
-    if (nu == 0) {
-        step_nu = 1;
-        stride_nu = L;
-    }
-    else if (nu == 1) {
-        step_nu = L;
-        stride_nu = LSQUARE;
-    }
-    else if (nu == 2) {
-        step_nu = LSQUARE;
-        stride_nu = LCUBE;
-    }
-    else {
-        step_nu = LCUBE;
-        stride_nu = LVOLUME;
-    }
+void staples(double *staple, double *U, int64_t pos, int64_t mu, int64_t nu) {
+    int64_t c[4]; site_coords(pos,c);
 
     double temp[X], staple_h[X];
+    int64_t pos1, pos2, pos3;
 
     // first staple
-    int64_t pos = D*spos + nu;
-    get_link(staple, U, mod(pos, LLENGTH));
+    pos1 = X*(D*pos + nu);
+    pos2 = X*(D*shift(pos, c, nu, +1) + mu);
+    pos3 = X*(D*shift(pos, c, mu, +1) + nu);
 
-    pos = D*(spos - mod(spos, stride_nu) + mod(spos + step_nu, stride_nu)) + mu;
-    get_link(temp, U, mod(pos, LLENGTH));
-    matmul(staple, staple, temp);
-
-    pos = D*(spos - mod(spos, stride_mu) + mod(spos + step_mu, stride_mu)) + nu;
-    get_link(temp, U, mod(pos, LLENGTH));
-    adjoint(temp, temp);
-    matmul(staple, staple, temp);
+    matmul_nc(temp, &U[pos1], &U[pos2]);
+    matmul_na_nc(staple, temp, &U[pos3]);
 
     // second staple
-    pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + nu;
-    get_link(staple_h, U, mod(pos, LLENGTH));
-    adjoint(staple_h, staple_h);
+    int64_t posn = shift(pos, c, nu, -1);
+    pos1 = X*(D*posn + nu);
+    pos2 = X*(D*posn + mu);
+    int64_t cn[4]; site_coords(posn, cn);
+    pos3 = X*(D*shift(posn, cn, mu, +1) + nu);
 
-    pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu)) + mu;
-    get_link(temp, U, mod(pos, LLENGTH));
-    matmul(staple_h, staple_h, temp);
-    
-    pos = D*(spos - mod(spos, stride_nu) + mod(spos - step_nu, stride_nu) - mod(spos, stride_mu) + mod(spos + step_mu, stride_mu)) + nu;
-    get_link(temp, U, mod(pos, LLENGTH));
-    matmul(staple_h, staple_h, temp);
+    matmul_an_nc(temp, &U[pos1], &U[pos2]);
+    matmul_nc(staple_h, temp, &U[pos3]);
 
-    for (int64_t i = 0; i < X; i++) {
+    for (int32_t i = 0; i < X; i++) {
         staple[i] += staple_h[i];
     }
 }
@@ -758,111 +731,3 @@ void gauge_action(double *action, double *U) {
     }
     *action = 2*beta*(3*T*L - sum);
 }
-
-/* frequently used functions
- * made the below functions static inline functions because it apparently leads to increased efficiency
- * see su3lib.h
- */
-// void matmul(double *z, double *x, double *y) {
-//     double u[X];
-//     double v[X];
-//     memcpy(u,x,X*sizeof(double));
-//     memcpy(v,y,X*sizeof(double));
-//     // for (int64_t i = 0; i < X; i++) {
-//     //     u[i] = x[i];
-//     //     v[i] = y[i];
-//     // }
-//
-//     z[0]  = u[0]*v[0]   - u[1]*v[1]   + u[2]*v[6]          // m[0] + i m[1]     m[2] + i m[3]     m[4] + i m[5]
-//           - u[3]*v[7]   + u[4]*v[12]  - u[5]*v[13];        // 
-//     z[1]  = u[0]*v[1]   + u[1]*v[0]   + u[2]*v[7]          // 
-//           + u[3]*v[6]   + u[4]*v[13]  + u[5]*v[12];        // 
-//     z[2]  = u[0]*v[2]   - u[1]*v[3]   + u[2]*v[8]          // m[6] + i m[7]     m[8] + i m[9]     m[10] + i m[11]
-//           - u[3]*v[9]   + u[4]*v[14]  - u[5]*v[15];        // 
-//     z[3]  = u[0]*v[3]   + u[1]*v[2]   + u[2]*v[9]          // 
-//           + u[3]*v[8]   + u[4]*v[15]  + u[5]*v[14];        // 
-//     z[4]  = u[0]*v[4]   - u[1]*v[5]   + u[2]*v[10]         // m[12] + i m[13]   m[14] + i m[15]   m[16] + i m[17]
-//           - u[3]*v[11]  + u[4]*v[16]  - u[5]*v[17];
-//     z[5]  = u[0]*v[5]   + u[1]*v[4]   + u[2]*v[11]
-//           + u[3]*v[10]  + u[4]*v[17]  + u[5]*v[16];
-//     z[6]  = u[6]*v[0]   - u[7]*v[1]   + u[8]*v[6]
-//           - u[9]*v[7]   + u[10]*v[12] - u[11]*v[13];
-//     z[7]  = u[6]*v[1]   + u[7]*v[0]   + u[8]*v[7]
-//           + u[9]*v[6]   + u[10]*v[13] + u[11]*v[12];
-//     z[8]  = u[6]*v[2]   - u[7]*v[3]   + u[8]*v[8]
-//           - u[9]*v[9]   + u[10]*v[14] - u[11]*v[15];
-//     z[9]  = u[6]*v[3]   + u[7]*v[2]   + u[8]*v[9]
-//           + u[9]*v[8]   + u[10]*v[15] + u[11]*v[14];
-//     z[10] = u[6]*v[4]   - u[7]*v[5]   + u[8]*v[10]
-//           - u[9]*v[11]  + u[10]*v[16] - u[11]*v[17];
-//     z[11] = u[6]*v[5]   + u[7]*v[4]   + u[8]*v[11]
-//           + u[9]*v[10]  + u[10]*v[17] + u[11]*v[16];
-//     z[12] = u[12]*v[0]  - u[13]*v[1]  + u[14]*v[6]
-//           - u[15]*v[7]  + u[16]*v[12] - u[17]*v[13];
-//     z[13] = u[12]*v[1]  + u[13]*v[0]  + u[14]*v[7]
-//           + u[15]*v[6]  + u[16]*v[13] + u[17]*v[12];
-//     z[14] = u[12]*v[2]  - u[13]*v[3]  + u[14]*v[8]
-//           - u[15]*v[9]  + u[16]*v[14] - u[17]*v[15];
-//     z[15] = u[12]*v[3]  + u[13]*v[2]  + u[14]*v[9]
-//           + u[15]*v[8]  + u[16]*v[15] + u[17]*v[14];
-//     z[16] = u[12]*v[4]  - u[13]*v[5]  + u[14]*v[10]
-//           - u[15]*v[11] + u[16]*v[16] - u[17]*v[17];
-//     z[17] = u[12]*v[5]  + u[13]*v[4]  + u[14]*v[11]
-//           + u[15]*v[10] + u[16]*v[17] + u[17]*v[16];
-// }
-//
-// void adjoint(double *xc, double *x) {
-//     double y[X];
-//     for (int64_t i = 0; i < X; i++) {
-//         y[i] = x[i];
-//     }
-//     xc[0] = y[0];       // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]
-//     xc[1] = -y[1];      // 
-//     xc[2] = y[6];       // 
-//     xc[3] = -y[7];      // 
-//     xc[4] = y[12];      // m[6] + i m[7]         m[8] + i m[9]         m[10] + i m[11]
-//     xc[5] = -y[13];     // 
-//     xc[6] = y[2];       // 
-//     xc[7] = -y[3];      // 
-//     xc[8] = y[8];       // m[12] + i m[13]       m[14] + i m[15]       m[16] + i m[17]
-//     xc[9] = -y[9];
-//     xc[10] = y[14];
-//     xc[11] = -y[15];
-//     xc[12] = y[4];
-//     xc[13] = -y[5];
-//     xc[14] = y[10];
-//     xc[15] = -y[11];
-//     xc[16] = y[16];
-//     xc[17] = -y[17];
-// }
-//
-// void trace(double *result, double *matrix) {
-//     result[0] = matrix[0] + matrix[8] + matrix[16];
-//     result[1] = matrix[1] + matrix[9] + matrix[17];
-// }
-//
-// void cmmul(double *z, double c, double *x) {
-//     for (int32_t i = 0; i < X; ++i) {
-//         z[i] = c*x[i];
-//     }
-// }
-//
-// int64_t mod(int64_t value, int64_t period) {
-//     // avoid taking unnecessary operations
-//     if (value >= 0 && value < period) {
-//         return value;
-//     }
-//     else {
-//         return (value%period + period)%period;
-//     }
-//     // return (value%period + period)%period;
-// }
-//
-// void get_link(double *link, double *U, int64_t pos) {
-//     pos = mod(pos, LLENGTH);
-//     pos *= X;
-//     memcpy(link,&U[pos],sizeof(double)*X);
-//     // for (int64_t i = 0; i < X; i++) {
-//     //     link[i] = U[pos+i];
-//     // }
-// }

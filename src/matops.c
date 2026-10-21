@@ -10,13 +10,10 @@
 #include "matops.h"
 
 void inverse(double *a, double *b) {
-
-    // Better to use LAPACK directly. Mainly for portability
-
     transpose(a,b);
     // memcpy(a,b,X*sizeof(double));
     
-    lapack_int *IPIV = malloc(NC*sizeof(int32_t));
+    lapack_int IPIV[NC];
     lapack_int info_rf, info_ri;
     lapack_complex_double work[16];
     lapack_int lNC = NC;
@@ -31,9 +28,6 @@ void inverse(double *a, double *b) {
     LAPACK_zgetri(&lNC, (lapack_complex_double*)a, &lNC, IPIV, work, &lwork, &info_ri);
 
     transpose(a,a);
-
-    free(IPIV);
-
 }
 
 void transpose(double *xc, double *x) {
