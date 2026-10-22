@@ -130,26 +130,19 @@ int main(int32_t argc, char *argv[]) {
     printf("Smearing the figs.\n");
     double *V = malloc(CLENGTH*sizeof(double));
     double *tmp;
-    const bool sdir[D] = {false, true, true, true}; // smear all but x direction, which is our b_T direction
-    int32_t n_smear = 5;
-    for (int32_t i = 0; i < n_smear; i++) {
-        ape_smear(V, input->U, 0.3, sdir);
+    for (int32_t i = 0; i < input->ape_steps; i++) {
+        ape_smear(V, input->U, input->ape_alpha, input->ape_directions);
         tmp = V;
         V = input->U;
         input->U = tmp;
     }
     delete_configuration(V);
 
-    do_run_for_config(input);
-    do_source_average(input);
+    // random_gauge_transform(input->U);
 
-    // uncomment for gauge invariance check
-    printf("Redoing run after random gauge transformation.\n");
-    random_gauge_transform(input->U);
     do_run_for_config(input);
+    delete_configuration(input->U); // don't need this anymore
     do_source_average(input);
-
-    delete_configuration(input->U);
     delete_input_struct(input);
 
     return 0;
