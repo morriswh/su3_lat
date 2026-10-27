@@ -32,6 +32,7 @@ typedef struct {
 } measurement_list;
 
 // Struct for input parameters
+// TODO: you could pack this, but maybe it's not really needed
 typedef struct {
     char config[200];
     char config_number[10];
@@ -51,15 +52,16 @@ typedef struct {
     int32_t ape_steps;
     double ape_alpha;
     bool ape_directions[4];
+    int32_t mu_e, mu_r, mu_b;
 
     double *U;
 } input_parameters;
 
 // Struct for loop directions
 typedef struct {
-    const int32_t mu_e;
-    const int32_t mu_r;
-    const int32_t mu_b;
+    int32_t mu_e;
+    int32_t mu_r;
+    int32_t mu_b;
     int32_t width;
     int64_t bstep;
     int64_t bperiod;
@@ -77,7 +79,7 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
 void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width, int32_t bmu, int32_t bsteps, int32_t bdir);
 
 void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
-void setup_loop_parameters(loop_parameters *loop);
+void setup_loop_parameters(loop_parameters *loop, input_parameters *input);
 void compute_observables(double *trace_array, double *prop_num, int32_t spos, const int32_t zspos, 
         const input_parameters *input, const double ratio, const int32_t t, const int32_t b, loop_parameters *loop );
 double *get_unit_configuration();
@@ -90,6 +92,7 @@ void create_data_path(char *data_path, input_parameters *input, char *r_str, cha
 void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
 void do_run_for_config(input_parameters *input);
+
 ////functions for handling inputs
 input_parameters *read_input_file_to_struct(char *file_name);
 void delete_input_struct(input_parameters *input);
@@ -120,14 +123,13 @@ int main(int32_t argc, char *argv[]) {
         exit(1);
     }
 
-    // double begin, middle, end, time_spent; 
-    // begin = omp_get_wtime();
+    double begin, end, time_spent; 
+    begin = omp_get_wtime();
 
     input_parameters *input = read_input_file_to_struct(argv[1]);
     print_input_struct_info(input);
 
-    // // uncomment for smearing
-    printf("Smearing the figs.\n");
+    if (input->ape_steps > 0) printf("Smearing the figs.\n");
     double *V = malloc(CLENGTH*sizeof(double));
     double *tmp;
     for (int32_t i = 0; i < input->ape_steps; i++) {
@@ -145,6 +147,10 @@ int main(int32_t argc, char *argv[]) {
     do_source_average(input);
     delete_input_struct(input);
 
+    end = omp_get_wtime();
+    time_spent = end - begin;
+    printf("Elapsed time: %lf\n", time_spent);
+
     return 0;
 }
 
@@ -154,18 +160,15 @@ void do_run_for_config(input_parameters *input) {
     existant_sources = (uint32_t*)malloc(MAX_SOURCES * sizeof(uint32_t));
 
     // setup directions for evolution, transverse, etc.
-    loop_parameters loop = {
-        .mu_e = mu_z, 
-        .mu_r = mu_t, 
-        .mu_b = mu_x
-    };
-    setup_loop_parameters(&loop);
+    loop_parameters loop;
+    setup_loop_parameters(&loop, input);
 
     // there is nothing wrong with a triple for loop when the situation demands it
     // don't be ashamed
     for (int32_t i = 0; i < input->r_size; i++) { // loop through ratio values
     for (int32_t j = 0; j < input->b_size; j++) { // loop through b_perp values
     for (int32_t k = 0; k < input->t_size; k++) { // loop through time values
+        // TODO: get rid of the string versions
         char *ratioStr = input->r_list[i];
         char *bStr = input->b_list[j];
         char *tStr = input->t_list[k];
@@ -473,10 +476,14 @@ void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int3
     *pos = src[3]*LCUBE + src[2]*LSQUARE + src[1]*L + src[0];
 }
 
-void setup_loop_parameters(loop_parameters *loop) {
+void setup_loop_parameters(loop_parameters *loop, input_parameters *input) {
+    loop->mu_e = input->mu_e; 
+    loop->mu_r = input->mu_r; 
+    loop->mu_b = input->mu_b;
     loop->width = (loop->mu_r == mu_t ? T : L);
     loop->bstep = ipow(L,loop->mu_b);
-    loop->bperiod = L*loop->bstep; // period for b direction, not generalized to loop->mu_b=mu_t
+    // loop->bperiod = L*loop->bstep; // period for b direction, not generalized to loop->mu_b=mu_t
+    loop->bperiod = (loop->mu_b == mu_t ? T : L)*loop->bstep;
     loop->estep = ipow(L,loop->mu_e);
     loop->eperiod = (loop->mu_e == mu_t ? T : L)*loop->estep;
 }
@@ -697,10 +704,13 @@ input_parameters *read_input_file_to_struct(char *file_name) {
         "W_PARAM",
         "APE_SMEAR_STEPS",
         "APE_SMEAR_ALPHA",
-        "APE_DIRECTIONS"
+        "APE_DIRECTIONS",
+        "EVOLUTION_DIRECTION",
+        "R_DIRECTION",
+        "TRANSVERSE_DIRECTION"
     };
     const size_t NUM_PARAMS = LENGTH(PARAM_LABELS);
-    size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 7, 6, 6, 6, 7, 7, 15, 15, 14};
+    size_t PARAM_SIZES[] = {11, 10, 8, 17, 7, 5, 7, 6, 6, 6, 7, 7, 15, 15, 14, 19, 11, 20};
 
     char PARAM_STRINGS[NUM_PARAMS][200];
 
@@ -749,6 +759,10 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     int32_t directions[4];
     ssl2ia_fixed(PARAM_STRINGS[++index], directions, 4);
     for (int32_t i = 0; i < 4; i++ ) input->ape_directions[i] = (bool)directions[i];
+
+    input->mu_e = atoi(PARAM_STRINGS[++index]);
+    input->mu_r = atoi(PARAM_STRINGS[++index]);
+    input->mu_b = atoi(PARAM_STRINGS[++index]);
 
     // TODO: maybe have this separate
     input->U = read_configuration(input->config);
@@ -879,6 +893,10 @@ void print_input_struct_info(input_parameters *input) {
             input->shape[0], input->shape[1], input->shape[2], input->shape[3]);
     printf("Auxiliary propagator r directions: %d, %d, %d, %d\n", 
             input->r_direction[0], input->r_direction[1], input->r_direction[2], input->r_direction[3]);
+    char mu_str[4][2] = { "x", "y", "z", "t"};
+    printf("Evolution direction: %s\n", mu_str[input->mu_e]);
+    printf("r direction: %s\n", mu_str[input->mu_r]);
+    printf("Transverse direction: %s\n", mu_str[input->mu_b]);
     printf("Ratio inputs: ");
     for (int32_t i = 0; i < input->r_size; i++) {
         printf("%s", input->r_list[i]);
@@ -911,11 +929,13 @@ void print_input_struct_info(input_parameters *input) {
     }
     printf("Hamiltonian iterations, n: %d\n", input->n);
     printf("Wilson parameter, w: %lf\n", input->w);
-    printf("APE smearing information:\n");
-    printf("\t Smearing steps: %d\n", input->ape_steps);
-    printf("\t Smearing alpha: %lf\n", input->ape_alpha);
-    printf("\t Smearing directions: %d, %d, %d, %d\n",
-            input->ape_directions[0], input->ape_directions[1], input->ape_directions[2], input->ape_directions[3]);
+    if (input->ape_steps > 0) {
+        printf("APE smearing information:\n");
+        printf("\t Smearing steps: %d\n", input->ape_steps);
+        printf("\t Smearing alpha: %lf\n", input->ape_alpha);
+        printf("\t Smearing directions: %d, %d, %d, %d\n",
+                input->ape_directions[0], input->ape_directions[1], input->ape_directions[2], input->ape_directions[3]);
+    }
 }
 
 //// functions for source averaging
