@@ -59,48 +59,44 @@ typedef struct {
 
 // Struct for loop directions
 typedef struct {
-    int32_t mu_e;
-    int32_t mu_r;
-    int32_t mu_b;
+    int32_t mu_e, mu_r, mu_b;
     int32_t width;
-    int64_t bstep;
-    int64_t bperiod;
-    int64_t estep;
-    int64_t eperiod;
+    int64_t estep, eperiod;
+    int64_t rstep, rperiod;
+    int64_t bstep, bperiod;
 } loop_parameters;
 
-//// declaration of functions
-// contains all operations including Wilson/mass term, also this has an overall opposite sign from the paper
+//// physics functions
+// contains all operations including Wilson/mass term
 void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t width, int32_t lpos);
 // compute LMN type propagator [add reference]
-void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
-		 int32_t width, int32_t mu_e, int32_t esteps, int32_t edir, double ratio, double w);
+void tpropLMN(double *prop, const double *U, const loop_parameters *loop, 
+        const int32_t n, const double w, int64_t spos, const int32_t esteps, const int32_t edir, const double ratio);
 // compute transverse links
-void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width, int32_t bmu, int32_t bsteps, int32_t bdir);
+void trLinks(double *prop, const double *U, const loop_parameters *loop,
+        int64_t spos, const int32_t bsteps, const int32_t bdir);
 
-void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
-void setup_loop_parameters(loop_parameters *loop, input_parameters *input);
+//// top level functions
+int32_t do_run_for_config(input_parameters *input);
 void compute_observables(double *trace_array, double *prop_num, int32_t spos, const int32_t zspos, 
         const input_parameters *input, const double ratio, const int32_t t, const int32_t b, loop_parameters *loop );
-double *get_unit_configuration();
+
+//// functions for handling gauge configuration
 double *read_configuration(char *config);
 void delete_configuration(double *V);
 double *random_gauge_transform(double *V);
 double *copy_configuration(double *V);
-void create_info_file(char **inputs); // broken for now 
-void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str);
-void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
-int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
-void do_run_for_config(input_parameters *input);
+double *get_unit_configuration();
 
 ////functions for handling inputs
 input_parameters *read_input_file_to_struct(char *file_name);
 void delete_input_struct(input_parameters *input);
 void get_contents(char *out, char* in);
-void get_string_array(char (**a)[16], int32_t *size, char *s);
+int32_t get_string_array(char (**a)[16], int32_t *size, char *s);
 int32_t ssl2sa_alloc(char *s, char **a);
 int32_t ssl2ia_fixed(char *s, int32_t *a, size_t size);
 void print_input_struct_info(input_parameters *input);
+void setup_loop_parameters(loop_parameters *loop, input_parameters *input);
 
 //// functions for handling and saving results of calculation
 // TODO: create a clear_measurement_list() function to avoid constant allocator calls
@@ -108,28 +104,37 @@ measurement_list *create_measurement_list(size_t block_size);
 int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement);
 void delete_measurement_list(measurement_list *list);
+void create_info_file(input_parameters *input);
+void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str);
 void write_data_to_file(measurement_list *list, char *data_path);
 measurement_list *read_data_from_file(char *data_path);
 
+//// functions for handling sources
+void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
+void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
+int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
+
 //// functions for source averaging
-void do_source_average(input_parameters *input); // FIX
+int32_t do_source_average(input_parameters *input); // FIX
 measurement_list *read_data_from_file_in_order(char *data_path);
 measurement_list *create_full_measurement_list(size_t block_size);
 void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str, input_parameters *input);
 
 int main(int32_t argc, char *argv[]) {
     if (argc != 2) {
-        printf("There should only be one argument here. That is the input file.\n");
-        exit(1);
+        fprintf(stderr, "There should only be one argument here. That is the input file.\n");
+        return 1;
     }
 
     double begin, end, time_spent; 
     begin = omp_get_wtime();
 
     input_parameters *input = read_input_file_to_struct(argv[1]);
+    if (input == NULL) return 1;
     print_input_struct_info(input);
+    create_info_file(input);
 
-    if (input->ape_steps > 0) printf("Smearing the figs.\n");
+    // if (input->ape_steps > 0) printf("Smearing the figs.\n");
     double *V = malloc(CLENGTH*sizeof(double));
     double *tmp;
     for (int32_t i = 0; i < input->ape_steps; i++) {
@@ -142,9 +147,16 @@ int main(int32_t argc, char *argv[]) {
 
     // random_gauge_transform(input->U);
 
-    do_run_for_config(input);
+    if (do_run_for_config(input) < 0) {
+        delete_configuration(input->U); // don't need this anymore
+        delete_input_struct(input);
+        return 1;
+    }
     delete_configuration(input->U); // don't need this anymore
-    do_source_average(input);
+    if (do_source_average(input) < 0) {
+        delete_input_struct(input);
+        return 1;
+    }
     delete_input_struct(input);
 
     end = omp_get_wtime();
@@ -154,7 +166,10 @@ int main(int32_t argc, char *argv[]) {
     return 0;
 }
 
-void do_run_for_config(input_parameters *input) {
+int32_t do_run_for_config(input_parameters *input) {
+    // track errors in the inner loop
+    int32_t err = 0;
+
     // allocate memory for this here so that so we're not doing it every iteration
     uint32_t *existant_sources;
     existant_sources = (uint32_t*)malloc(MAX_SOURCES * sizeof(uint32_t));
@@ -209,14 +224,10 @@ void do_run_for_config(input_parameters *input) {
                 // here is where the physics happens
                 compute_observables(trace_array, prop_num, lattice_s, lattice_zs, input, ratio, t, b, &loop);
 
-                // print result of compute_observables
-                // printf("t=%d, b=%d, thread=%d, src=%d, %lf, %lf\n", t, b, parallel_s, s, trace_array[0], trace_array[1]);
-
                 if(add_measurement_to_list(data_list, 
                                            lattice_s, trace_array) != 0) {
-                    printf("failed to add measurement to list!\n");
-                    printf("this is probably due to memory exhaustion.\n");
-                    exit(1);
+                    fprintf(stderr, "Failed to add measurement to list.\n");
+                    err -=1;
                 }
 
                 if (data_list->number_of_measurements > (size_t)20000) {
@@ -226,6 +237,7 @@ void do_run_for_config(input_parameters *input) {
                     data_list = create_measurement_list(16);
                 }
             }
+
             #pragma omp critical
 
             write_data_to_file(data_list, data_path);
@@ -237,6 +249,7 @@ void do_run_for_config(input_parameters *input) {
 
     free(existant_sources);
     // free(sizes);
+    return err;
 }
 
 void hamiltonian(double coef, double r, double w, double *result, double *layer, double *Ulayer, int32_t width, int32_t lpos) {
@@ -263,21 +276,24 @@ void hamiltonian(double coef, double r, double w, double *result, double *layer,
     }
 }
 
-void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu, 
-        int32_t width, int32_t mu_e, int32_t esteps, int32_t edir, double ratio, 
-        double w) {
+void tpropLMN(double *prop, const double *U, const loop_parameters *loop,
+        const int32_t n, const double w, int64_t spos, const int32_t esteps, const int32_t edir, const double ratio) {
 
     // this function is based on a result in arXiv:hep-lat/9205007
 
-    int64_t estep = ipow(L,mu_e); // since T is the last dimension, it won't effect the step size for any direction
-    int64_t eperiod = (mu_e == mu_t ? T : L)*estep;
+    int32_t mu = loop->mu_r;
+    int32_t mu_e = loop->mu_e;
+    int32_t width = loop->width;
 
-    int64_t step = ipow(L,mu); // mu=0,1,2,3 // this one stays as L, it is the step size
-    int64_t period = width*step;
+    int64_t estep = loop->estep;
+    int64_t eperiod = loop->eperiod;
 
-    int64_t rpos = mod(spos/step, width);
+    int64_t step = loop->rstep;
+    int64_t period = loop->rperiod;
+
     // pull the WL direction back to the edge so
     // we don't have to worry about boundaries
+    int64_t rpos = mod(spos/step, width);
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
     double helper[width*X];
@@ -367,19 +383,22 @@ void tpropLMN(double *prop, double *U, int32_t n, int64_t spos, int32_t mu,
     }
 }
 
-void trLinks(double *prop, double *U, int64_t spos, int32_t mu, int32_t width, 
-        int32_t bmu, int32_t bsteps, int32_t bdir) {
+void trLinks(double *prop, const double *U, const loop_parameters *loop,
+        int64_t spos, const int32_t bsteps, const int32_t bdir) {
 
-    int64_t step = ipow(L,mu);
-    int64_t period = width*step;
-    int64_t rpos = mod(spos/step, width);
+    int32_t bmu = loop->mu_b;
+    // int32_t mu = loop->mu_r;
+    int32_t width = loop->width;
 
-    int64_t bstep = ipow(L,bmu);
-    int64_t bperiod = L*bstep; // this will not work if we want the time direction
-                          // to be our bdir but why would we want that?
+    int64_t step = loop->rstep;
+    int64_t period = loop->rperiod;
+
+    int64_t bstep = loop->bstep;
+    int64_t bperiod = loop->bperiod;
 
     // pull the WL direction back to the edge so
     // we don't have to worry about boundaries
+    int64_t rpos = mod(spos/step, width);
     spos = spos - mod(spos, period) + mod(spos - step*rpos, period);
 
     double layer[width*X]; // chocolate cake
@@ -481,11 +500,12 @@ void setup_loop_parameters(loop_parameters *loop, input_parameters *input) {
     loop->mu_r = input->mu_r; 
     loop->mu_b = input->mu_b;
     loop->width = (loop->mu_r == mu_t ? T : L);
-    loop->bstep = ipow(L,loop->mu_b);
-    // loop->bperiod = L*loop->bstep; // period for b direction, not generalized to loop->mu_b=mu_t
-    loop->bperiod = (loop->mu_b == mu_t ? T : L)*loop->bstep;
     loop->estep = ipow(L,loop->mu_e);
     loop->eperiod = (loop->mu_e == mu_t ? T : L)*loop->estep;
+    loop->rstep = ipow(L,loop->mu_r);
+    loop->rperiod = (loop->mu_r == mu_t ? T : L)*loop->rstep;
+    loop->bstep = ipow(L,loop->mu_b);
+    loop->bperiod = (loop->mu_b == mu_t ? T : L)*loop->bstep;
 }
 
 void compute_observables(double *trace_array, double *prop_num, int32_t spos, const int32_t zspos, 
@@ -498,7 +518,7 @@ void compute_observables(double *trace_array, double *prop_num, int32_t spos, co
     double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
 
     int64_t bstep = loop->bstep;
-    int64_t bperiod = loop->bperiod; // period for b direction, not generalized to loop->mu_b=mu_t
+    int64_t bperiod = loop->bperiod;
     int64_t estep = loop->estep;
     int64_t eperiod = loop->eperiod;
 
@@ -507,26 +527,22 @@ void compute_observables(double *trace_array, double *prop_num, int32_t spos, co
     memset(prop_num, 0, sizeof(double)*loop->width*X);
     memcpy(&prop_num[zsrcp],source,sizeof(double)*X);
 
-    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
-            t, input->shape[0], ratio*input->r_direction[0], input->w);
+    tpropLMN(prop_num, U, loop, input->n, input->w, spos, t, input->shape[0], ratio*input->r_direction[0]);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*input->shape[0], eperiod);
 
-    trLinks(prop_num, U, spos, loop->mu_r, loop->width, loop->mu_b, b, bdir=1);
+    trLinks(prop_num, U, loop, spos, b, bdir=1);
     spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
 
-    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
-            t, input->shape[1], ratio*input->r_direction[1], input->w);
+    tpropLMN(prop_num, U, loop, input->n, input->w, spos, t, input->shape[1], ratio*input->r_direction[1]);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*input->shape[1], eperiod);
 
-    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
-            t, input->shape[2], ratio*input->r_direction[2], input->w);
+    tpropLMN(prop_num, U, loop, input->n, input->w, spos, t, input->shape[2], ratio*input->r_direction[2]);
     spos = spos - mod(spos, eperiod) + mod(spos+estep*t*input->shape[2], eperiod);
 
-    trLinks(prop_num, U, spos, loop->mu_r, loop->width, loop->mu_b, b, bdir=-1);
+    trLinks(prop_num, U, loop, spos, b, bdir=-1);
     spos = spos - mod(spos, bperiod) + mod(spos+bstep*b*bdir, bperiod);
 
-    tpropLMN(prop_num, U, input->n, spos, loop->mu_r, loop->width, loop->mu_e, 
-            t, input->shape[3], ratio*input->r_direction[3], input->w);
+    tpropLMN(prop_num, U, loop, input->n, input->w, spos, t, input->shape[3], ratio*input->r_direction[3]);
 
     trace(&trace_array[0], &prop_num[zsrcp]);
 
@@ -562,7 +578,8 @@ double *read_configuration(char *config) {
 
     if (read_nersc(V, config, header, &header_length)!=0) {
         printf("failed to read configuration!\n");
-        exit(1);
+        free(V);
+        return NULL;
     }
 
     return V;
@@ -589,30 +606,83 @@ double *copy_configuration(double *V) {
     return U;
 }
 
-void create_info_file(char **inputs) {
+void create_info_file(input_parameters *input) {
     // TODO: change how we do this. It's basically useless right now
     // make an info file
     char info_path[200];
-    sprintf(info_path, "%s/info_src%s", inputs[8], inputs[3]);
+    // sprintf(info_path, "%s/info_src%s", inputs[8], inputs[3]);
+    sprintf(info_path, "%s/info", input->data_dir);
 
     struct stat buffer;
     if (stat(info_path, &buffer) != 0) {
         FILE *info_file;
         info_file = fopen(info_path, "a");
-
-        /*fprintf(info_file, header);*/
-        fprintf(info_file, "Layout: (uint32_t)(NUM_DATAS*double)\n");
-        fprintf(info_file, "cols:\tnum.real\tnum.imag\n");
-        fprintf(info_file, "n=%s\n",inputs[1]);
-        fprintf(info_file, "r=%s\n",inputs[2]);
-        fprintf(info_file, "b=%s\n",inputs[4]);
-        fprintf(info_file, "t=%s\n",inputs[5]);
-        fprintf(info_file, "c=%s\n",inputs[6]);
-        fprintf(info_file, "\n");
-        /*fprintf(info_file, "index = b + ncols * t\n");*/
-
+        fprintf(info_file, 
+                "Data file is structured as (source index<uint32_t>)"
+                "(%d*((real part<double>)(imaginary part<double>)))\n", NUM_DATAS/2);
+        fprintf(info_file, "======================================================================\n");
         fclose(info_file);
     }
+
+    FILE *info_file;
+    info_file = fopen(info_path, "a");
+
+    fprintf(info_file, "Doing run with following inputs:\n");
+    fprintf(info_file, "Configuration file: %s\n", input->config);
+    fprintf(info_file, "Configuration number: %s\n", input->config_number);
+    fprintf(info_file, "Data write directory: %s\n", input->data_dir);
+    fprintf(info_file, "Source averaged data write directory: %s\n", input->averaged_data_dir);
+    fprintf(info_file, "Number of sources: %d\n", input->num_sources);
+    fprintf(info_file, "Auxiliary propagator t directions: %d, %d, %d, %d\n", 
+            input->shape[0], input->shape[1], input->shape[2], input->shape[3]);
+    fprintf(info_file, "Auxiliary propagator r directions: %d, %d, %d, %d\n", 
+            input->r_direction[0], input->r_direction[1], input->r_direction[2], input->r_direction[3]);
+    char mu_str[4][2] = { "x", "y", "z", "t"};
+    fprintf(info_file, "Evolution direction: %s\n", mu_str[input->mu_e]);
+    fprintf(info_file, "r direction: %s\n", mu_str[input->mu_r]);
+    fprintf(info_file, "Transverse direction: %s\n", mu_str[input->mu_b]);
+    fprintf(info_file, "Ratio inputs: ");
+    for (int32_t i = 0; i < input->r_size; i++) {
+        fprintf(info_file, "%s", input->r_list[i]);
+        if (i < input->r_size-1) {
+            fprintf(info_file, ", ");
+        }
+        else {
+            fprintf(info_file, "\n");
+        }
+    }
+    fprintf(info_file, "Time inputs: ");
+    for (int32_t i = 0; i < input->t_size; i++) {
+        fprintf(info_file, "%s", input->t_list[i]);
+        if (i < input->t_size-1) {
+            fprintf(info_file, ", ");
+        }
+        else {
+            fprintf(info_file, "\n");
+        }
+    }
+    fprintf(info_file, "bT inputs: ");
+    for (int32_t i = 0; i < input->b_size; i++) {
+        fprintf(info_file, "%s", input->b_list[i]);
+        if (i < input->b_size-1) {
+            fprintf(info_file, ", ");
+        }
+        else {
+            fprintf(info_file, "\n");
+        }
+    }
+    fprintf(info_file, "Hamiltonian iterations, n: %d\n", input->n);
+    fprintf(info_file, "Wilson parameter, w: %lf\n", input->w);
+    if (input->ape_steps > 0) {
+        fprintf(info_file, "APE smearing information:\n");
+        fprintf(info_file, "\t Smearing steps: %d\n", input->ape_steps);
+        fprintf(info_file, "\t Smearing alpha: %lf\n", input->ape_alpha);
+        fprintf(info_file, "\t Smearing directions: %d, %d, %d, %d\n",
+                input->ape_directions[0], input->ape_directions[1], input->ape_directions[2], input->ape_directions[3]);
+    }
+    fprintf(info_file, "======================================================================\n");
+
+    fclose(info_file);
 }
 
 void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str) {
@@ -722,7 +792,8 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     FILE *infile = fopen(file_name, "r");
     if (infile == NULL) {
         printf("Cannot find input file. Exiting.\n");
-        exit(1);
+        free(input);
+        return NULL;
     }
 
     while( fgets(line, 200, infile) != NULL) {
@@ -748,9 +819,21 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     input->num_sources = atoi(PARAM_STRINGS[++index]);
     ssl2ia_fixed(PARAM_STRINGS[++index], input->shape, 4);
     ssl2ia_fixed(PARAM_STRINGS[++index], input->r_direction, 4);
-    get_string_array(&input->t_list, &input->t_size, PARAM_STRINGS[++index]);
-    get_string_array(&input->b_list, &input->b_size, PARAM_STRINGS[++index]);
-    get_string_array(&input->r_list, &input->r_size, PARAM_STRINGS[++index]);
+    if(get_string_array(&input->t_list, &input->t_size, PARAM_STRINGS[++index]) < 0) {
+        fprintf(stderr, "Failed to get string array for T_LIST\n");
+        free(input);
+        return NULL;
+    }
+    if(get_string_array(&input->b_list, &input->b_size, PARAM_STRINGS[++index]) < 0) {
+        fprintf(stderr, "Failed to get string array for B_LIST\n");
+        free(input);
+        return NULL;
+    }
+    if(get_string_array(&input->r_list, &input->r_size, PARAM_STRINGS[++index]) < 0) {
+        fprintf(stderr, "Failed to get string array for R_LIST\n");
+        free(input);
+        return NULL;
+    }
     input->n = atoi(PARAM_STRINGS[++index]);
     input->w = atof(PARAM_STRINGS[++index]);
 
@@ -763,9 +846,25 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     input->mu_e = atoi(PARAM_STRINGS[++index]);
     input->mu_r = atoi(PARAM_STRINGS[++index]);
     input->mu_b = atoi(PARAM_STRINGS[++index]);
+    if (input->mu_e > 3 || input->mu_r > 3 || input->mu_b > 3) {
+        fprintf(stderr, "Bad inputs. One or more of EVOLUTION_DIRECTION, "
+                "R_DIRECTION, or TRANSVERSE_DIRECTION is greater than three.\n");
+        free(input);
+        return NULL;
+    }
+    if (input->mu_e == input->mu_r || input->mu_e == input->mu_b || input->mu_r == input->mu_b) {
+        fprintf(stderr, "Bad inputs. EVOLUTION_DIRECTION, R_DIRECTION, or "
+                "TRANSVERSE_DIRECTION have been set equal to each other.\n");
+        free(input);
+        return NULL;
+    }
 
     // TODO: maybe have this separate
     input->U = read_configuration(input->config);
+    if (input->U == NULL) {
+        free(input);
+        return NULL;
+    }
 
     mkdir(input->data_dir, 0755);
     mkdir(input->averaged_data_dir, 0755);
@@ -802,7 +901,7 @@ void get_contents(char *out, char* in) {
     out[j] = '\0';
 }
 
-void get_string_array(char (**a)[16], int32_t *size, char *s) {
+int32_t get_string_array(char (**a)[16], int32_t *size, char *s) {
     int32_t len = 8;
     *a = (char(*)[16])malloc(len * sizeof **a);
     *size = 0;
@@ -813,8 +912,9 @@ void get_string_array(char (**a)[16], int32_t *size, char *s) {
         if ( s[i] == ' ' || s[i] == '\0') {
             int32_t entry_len = i-ri;
             if (entry_len >= 16) {
-                printf("One or more inputs to T_LIST, B_LIST or R_LIST larger than 15 digits. This is pointless.\n");
-                exit(1);
+                fprintf(stderr, "One or more inputs to T_LIST, B_LIST or R_LIST larger than 15 digits. This is pointless.\n");
+                free(*a);
+                return -1;
             }
             strncpy((*a)[*size], s+ri, entry_len*sizeof(char));
             (*a)[*size][i-ri] = '\0';
@@ -823,8 +923,9 @@ void get_string_array(char (**a)[16], int32_t *size, char *s) {
             if (*size == len) {
                 void *new_array = (char(*)[16])realloc(*a, 2*len * sizeof **a);
                 if (new_array == NULL) {
-                    printf("realloc returned NULL array in get_string_array()\n");
-                    exit(1);
+                    fprintf(stderr, "realloc returned NULL array in get_string_array()\n");
+                    free(*a);
+                    return -1;
                 }
                 *a = new_array;
                 len *= 2;
@@ -833,6 +934,7 @@ void get_string_array(char (**a)[16], int32_t *size, char *s) {
         if (s[i] == '\0') break;
         i++;
     }
+    return 0;
 }
 
 int32_t ssl2sa_alloc(char *s, char **a) {
@@ -939,7 +1041,7 @@ void print_input_struct_info(input_parameters *input) {
 }
 
 //// functions for source averaging
-void do_source_average(input_parameters *input) {
+int32_t do_source_average(input_parameters *input) {
     for (int32_t i = 0; i < input->r_size; i++) { // loop through ratio values
     for (int32_t j = 0; j < input->b_size; j++) { // loop through b_perp values
     for (int32_t k = 0; k < input->t_size; k++) { // loop through time values
@@ -961,8 +1063,8 @@ void do_source_average(input_parameters *input) {
             int32_t lattice_s;
             source_grid(&lattice_s, NULL, 0, s, input->num_sources);
             if (ordered_data->indices[lattice_s] == UINT32_MAX) {
-                printf("missing data!\n");
-                exit(1);
+                fprintf(stderr, "Missing data for this configuration.\n");
+                return -1;
             }
             for (size_t i = 0; i < NUM_DATAS; i++) {
                 averaged_data[i] += ordered_data->measurements[NUM_DATAS*lattice_s+i];
@@ -981,6 +1083,7 @@ void do_source_average(input_parameters *input) {
     } // triple
     } // for
     } // loop
+    return 0;
 }
 
 measurement_list *create_full_measurement_list(size_t size) {
@@ -1041,7 +1144,7 @@ void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str,
         fprintf(tsv_file, "# r\tb\tt\treal\timag\t\n");
     }
 
-    fprintf(tsv_file, "%s\t%s\t%s\t%lf\t%lf\t\n", 
+    fprintf(tsv_file, "%s\t%s\t%s\t%.16E\t%.16E\t\n", 
             r_str, b_str, t_str, data[0], data[1]);
 
     fclose(tsv_file);
