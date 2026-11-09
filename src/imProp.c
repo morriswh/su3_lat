@@ -115,10 +115,13 @@ void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources,
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
 
 //// functions for source averaging
-int32_t do_source_average(input_parameters *input); // FIX
+int32_t do_source_average(input_parameters *input);
 measurement_list *read_data_from_file_in_order(char *data_path);
 measurement_list *create_full_measurement_list(size_t block_size);
 void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str, input_parameters *input);
+int32_t do_source_block_average(input_parameters *input, int32_t block_size, char *blocked_data_dir);
+void write_blocked_data_to_file(input_parameters *input, double *blocked_data, 
+        int32_t size, char *r_str, char *t_str, char *b_str, char *blocked_data_dir);
 
 int main(int32_t argc, char *argv[]) {
     if (argc != 2) {
@@ -153,6 +156,12 @@ int main(int32_t argc, char *argv[]) {
         return 1;
     }
     delete_configuration(input->U); // don't need this anymore
+
+    // char block_dir[] = "/home/work/projects/su3_lat/block/";
+    // if (do_source_block_average(input, 8, block_dir) < 0 ) {
+    //     delete_input_struct(input);
+    // }
+
     if (do_source_average(input) < 0) {
         delete_input_struct(input);
         return 1;
@@ -1064,6 +1073,7 @@ int32_t do_source_average(input_parameters *input) {
             source_grid(&lattice_s, NULL, 0, s, input->num_sources);
             if (ordered_data->indices[lattice_s] == UINT32_MAX) {
                 fprintf(stderr, "Missing data for this configuration.\n");
+                delete_measurement_list(ordered_data);
                 return -1;
             }
             for (size_t i = 0; i < NUM_DATAS; i++) {
@@ -1084,6 +1094,96 @@ int32_t do_source_average(input_parameters *input) {
     } // for
     } // loop
     return 0;
+}
+
+int32_t do_source_block_average(input_parameters *input, int32_t block_size, char *blocked_data_dir) {
+    if (block_size == 0) {
+        fprintf(stderr, "You cannot have a zero block size.\n");
+        return -1;
+    }
+
+    int32_t block = ipow(block_size, 4);
+
+    if (L%block_size != 0 || T%block_size != 0) {
+        fprintf(stderr, "Block should tile the lattice.\n");
+        return -1;
+    }
+
+    for (int32_t i = 0; i < input->r_size; i++) { // loop through ratio values
+    for (int32_t j = 0; j < input->b_size; j++) { // loop through b_perp values
+    for (int32_t k = 0; k < input->t_size; k++) { // loop through time values
+        char *r_str = input->r_list[i];
+        char *b_str = input->b_list[j];
+        char *t_str = input->t_list[k];
+
+        char data_path[250];
+        create_data_path(data_path, input, r_str, t_str, b_str); 
+
+        int32_t num_block_sources = LVOLUME/block; 
+        double blocked_data[num_block_sources*NUM_DATAS];
+        int32_t num_src_in_block[num_block_sources];
+        memset(blocked_data, 0, num_block_sources*NUM_DATAS*sizeof(double));
+        memset(num_src_in_block, 0, num_block_sources*sizeof(int32_t));
+
+        measurement_list *ordered_data = read_data_from_file_in_order(data_path);
+
+        for (int64_t s = 0; s < input->num_sources; ++s) {
+            // TODO: lattice_zs is not needed here, maybe rework this
+            int32_t lattice_s;
+            source_grid(&lattice_s, NULL, 0, s, input->num_sources);
+
+            if (ordered_data->indices[lattice_s] == UINT32_MAX) {
+                fprintf(stderr, "Missing data for this configuration.\n");
+                delete_measurement_list(ordered_data);
+                return -1;
+            }
+
+            int32_t blc[] = {0, 0, 0, 0};
+            int32_t block_L = L/block_size;
+
+            blc[0] = (lattice_s%L)/block_size;
+            blc[1] = ((lattice_s/L)%L)/block_size;
+            blc[2] = (((lattice_s/L)/L)%L)/block_size;
+            blc[3] = ((((lattice_s/L)/L)/L)%T)/block_size;
+
+            int32_t block_index = ( ( blc[3]*block_L + blc[2])*block_L + blc[1])*block_L + blc[0];
+            for (size_t n = 0; n < NUM_DATAS; n++) {
+                blocked_data[NUM_DATAS*block_index+n] += ordered_data->measurements[NUM_DATAS*lattice_s+n];
+            }
+            num_src_in_block[block_index]++;
+        }
+
+        delete_measurement_list(ordered_data);
+
+        for (int32_t nb = 0; nb < NUM_DATAS*num_block_sources; nb++) {
+            if (num_src_in_block[nb] == 0) {
+                fprintf(stderr, "Sparse source grid, consider smaller block size, or use a larger number of sources.\n");
+                return -1;
+            }
+            blocked_data[nb] /= (double)num_src_in_block[nb];
+        }
+
+        write_blocked_data_to_file(input, blocked_data, num_block_sources, r_str, t_str, b_str, blocked_data_dir);
+
+    } // triple
+    } // for
+    } // loop
+    return 0;
+}
+
+void write_blocked_data_to_file(input_parameters *input, double *blocked_data, 
+        int32_t size, char *r_str, char *t_str, char *b_str, char *blocked_data_dir) {
+
+    char data_sub_dir[215];
+    sprintf(data_sub_dir, "%s/r%sb%st%s", blocked_data_dir, r_str, b_str, t_str);
+    mkdir(data_sub_dir, 0755);
+    char data_path[250];
+    sprintf(data_path, "%s/c%s.bin", data_sub_dir, input->config_number);
+
+    FILE *data_file;
+    data_file = fopen(data_path, "wb");
+    fwrite(blocked_data, sizeof(double), size, data_file);
+    fclose(data_file);
 }
 
 measurement_list *create_full_measurement_list(size_t size) {
