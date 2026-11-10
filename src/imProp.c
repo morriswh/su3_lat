@@ -105,6 +105,7 @@ void setup_loop_parameters(loop_parameters *loop, input_parameters *input);
 measurement_list *create_measurement_list(size_t block_size);
 int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement);
+void clear_measurement_list(measurement_list *list);
 void delete_measurement_list(measurement_list *list);
 void create_info_file(input_parameters *input);
 void create_data_path(char *data_path, input_parameters *input, char *r_str, char *t_str, char *b_str);
@@ -246,8 +247,9 @@ int32_t do_run_for_config(input_parameters *input) {
                 if (data_list->number_of_measurements > (size_t)20000) {
                     #pragma omp critical
                     write_data_to_file(data_list, data_path);
-                    delete_measurement_list(data_list);
-                    data_list = create_measurement_list(16);
+                    clear_measurement_list(data_list);
+                    // delete_measurement_list(data_list);
+                    // data_list = create_measurement_list(16);
                 }
             }
 
@@ -479,6 +481,10 @@ int64_t add_measurement_to_list(measurement_list *list, int64_t index,
     memcpy(&list->measurements[NUM_DATAS*num_measurements], measurement, NUM_DATAS*sizeof(double));
     ++list->number_of_measurements;
     return 0;
+}
+
+void clear_measurement_list(measurement_list *list) {
+    list->number_of_measurements = 0;
 }
 
 void delete_measurement_list(measurement_list *list) {

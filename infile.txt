@@ -1,4 +1,4 @@
-T_LIST = "2"
+T_LIST = "8"
 B_LIST = "4"
 R_LIST = "0.999"
 W_PARAM = "2.0"
