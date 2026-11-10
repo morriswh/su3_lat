@@ -139,16 +139,18 @@ int main(int32_t argc, char *argv[]) {
     print_input_struct_info(input);
     create_info_file(input);
 
-    // if (input->ape_steps > 0) printf("Smearing the figs.\n");
-    double *V = malloc(CLENGTH*sizeof(double));
-    double *tmp;
-    for (int32_t i = 0; i < input->ape_steps; i++) {
-        ape_smear(V, input->U, input->ape_alpha, input->ape_directions);
-        tmp = V;
-        V = input->U;
-        input->U = tmp;
+    if (input->ape_steps > 0) {
+        printf("Smearing the figs.\n");
+        double *V = malloc(CLENGTH*sizeof(double));
+        double *tmp;
+        for (int32_t i = 0; i < input->ape_steps; i++) {
+            ape_smear(V, input->U, input->ape_alpha, input->ape_directions);
+            tmp = V;
+            V = input->U;
+            input->U = tmp;
+        }
+        delete_configuration(V);
     }
-    delete_configuration(V);
 
     // random_gauge_transform(input->U);
 
