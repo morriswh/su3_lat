@@ -19,4 +19,9 @@
 #define LSQUARE (L*L)
 #define NUM_DATAS 2
 
+#define SUB_CLENGTH (T*L*L*D*X)
+#define SUB_OLENGTH (T*L*L*X)
+#define SUB_LLENGTH (T*L*L*D)
+#define SUB_LVOLUME (T*L*L)
+
 #endif // !SIZES_H

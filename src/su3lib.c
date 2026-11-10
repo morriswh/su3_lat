@@ -610,11 +610,16 @@ void directional_sum(double *lattice, int64_t *directions,
     }
 }
 
-static inline void site_coords(int64_t i, int64_t c[4]) {
-    c[0] = i % L;
-    c[1] = (i / L) % L;
-    c[2] = (i / LSQUARE) % L;
-    c[3] = i / LCUBE;
+static inline void site_coords(int64_t i, int64_t c[D]) {
+    for (int j = 0; j < D; j++) {
+        c[j] = i / ipow(L,j);
+        if (j == D) break;
+        c[j] = c[j]%L;
+    }
+    // c[0] = i % L;
+    // c[1] = (i / L) % L;
+    // c[2] = (i / LSQUARE) % L;
+    // c[3] = i / LCUBE;
 }
 
 static inline int64_t shift(int64_t i, const int64_t c[4], int mu, int dir) {

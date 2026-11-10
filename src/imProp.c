@@ -18,6 +18,8 @@
 #include "fileIO.h"
 #include "apelib.h"
 
+// TODO: break this into two or three files and keep main very simple
+
 #define LENGTH(X) (sizeof X / sizeof X[0])
 #define MAX_SOURCES LVOLUME
 
@@ -311,7 +313,7 @@ void tpropLMN(double *prop, const double *U, const loop_parameters *loop,
     // fill Ulayer for first use
     int32_t l;
     for (l = 0; l < width; l++) {
-        memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X);
+        memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X); // using D
     }
 
     double coef = (double)1.0/(2*n);
@@ -347,7 +349,7 @@ void tpropLMN(double *prop, const double *U, const loop_parameters *loop,
         // U^+(tprev)
         if (edir == 1) {
             for(j = 0; j < width; j++) {
-                int64_t pos = X*(D*(spos+step*j)+mu_e);
+                int64_t pos = X*(D*(spos+step*j)+mu_e); // using D
                 matmul_nc(&helper[X*j],&prop[X*j],&U[pos]);
             }
         }
@@ -359,14 +361,14 @@ void tpropLMN(double *prop, const double *U, const loop_parameters *loop,
         // U^+(tprev)
         if (edir == -1) {
             for(j = 0; j < width; j++) {
-                int64_t pos = X*(D*(spos+step*j)+mu_e);
+                int64_t pos = X*(D*(spos+step*j)+mu_e); // using D
                 matmul_na_nc(&helper[X*j],&prop[X*j],&U[pos]);
             }
         }
 
         // update Ulayer for next loop
         for (l = 0; l < width; l++) {
-            memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X);
+            memcpy(&Ulayer[X*l], &U[X*(D*(spos+step*l)+mu)], sizeof(double)*X); // using D
         }
 
         // (1-H0/2n)^n |_t
@@ -420,7 +422,7 @@ void trLinks(double *prop, const double *U, const loop_parameters *loop,
 
         if (bdir == 1) {
             for(j = 0; j < width; j++) {
-                int64_t pos = X*(D*(spos+step*j)+bmu);
+                int64_t pos = X*(D*(spos+step*j)+bmu); // using D
                 matmul(&layer[X*j],&layer[X*j],&U[pos]);
             }
         }
@@ -430,7 +432,7 @@ void trLinks(double *prop, const double *U, const loop_parameters *loop,
 
         if (bdir == -1) {
             for(j = 0; j < width; j++) {
-                int64_t pos = X*(D*(spos+step*j)+bmu);
+                int64_t pos = X*(D*(spos+step*j)+bmu); // using D
                 matmul_na(&layer[X*j],&layer[X*j],&U[pos]);
             }
         }
@@ -855,9 +857,9 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     input->mu_e = atoi(PARAM_STRINGS[++index]);
     input->mu_r = atoi(PARAM_STRINGS[++index]);
     input->mu_b = atoi(PARAM_STRINGS[++index]);
-    if (input->mu_e > 3 || input->mu_r > 3 || input->mu_b > 3) {
+    if (input->mu_e >= D || input->mu_r >= D || input->mu_b >= D) { // using D
         fprintf(stderr, "Bad inputs. One or more of EVOLUTION_DIRECTION, "
-                "R_DIRECTION, or TRANSVERSE_DIRECTION is greater than three.\n");
+                "R_DIRECTION, or TRANSVERSE_DIRECTION is greater than %d-1.\n", D); // using D
         free(input);
         return NULL;
     }
