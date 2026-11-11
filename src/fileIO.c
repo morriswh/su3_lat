@@ -14,7 +14,7 @@ int32_t read_nersc(double *U, char *config, char *header, int32_t *header_length
     // need to figure out the issue with fread and doubles for the NERSC config
     // for now the union method works I guess
     union {
-        int64_t retriever;
+        uint64_t retriever;
         double element;
     } package; 
 
@@ -63,7 +63,7 @@ int32_t read_nersc(double *U, char *config, char *header, int32_t *header_length
 
 void write_nersc(double *U, char *out_file, char *header, int32_t header_length) {
     union {
-        int64_t sender;
+        uint64_t sender;
         double element;
     } package; 
 
@@ -185,7 +185,7 @@ void find_nersc_value(char *value, char *label, int32_t label_length, char *head
 
 int32_t read_scidac(double *U, char *config, char *header, int32_t *header_length) {
     union {
-        int64_t retriever;
+        uint64_t retriever;
         double element;
     } package; 
 

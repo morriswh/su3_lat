@@ -32,7 +32,7 @@ void inverse(double *a, double *b) {
 
 void transpose(double *xc, double *x) {
     double y[X];
-    for (int64_t i = 0; i < X; i++) {
+    for (int32_t i = 0; i < X; i++) {
         y[i] = x[i];
     }
     xc[0] = y[0];       

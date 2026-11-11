@@ -9,15 +9,15 @@ void immul(double *z, double c, double *x); // imaginary scalar times su(3) matr
 void matadd(double *z, double *x, double *y); // sum of two su(3) matrices
 void print_link(double *link); // print64_t gauge link, needs cosmetic attention
 void det(double *result, double *matrix); // determinant of su(3) matrix
-void transform(double *Up, double *U, double *Omega); // gauge transformation
+void transform(double *U, double *Om); // gauge transformation no copy
 void plaquette(double *plaq, double *U, int64_t spos, int32_t mu, int32_t nu); // plaquette
 void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq);
-void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu); // clover
+void cloverleaf(double *clover, double *U, int64_t spos, int32_t mu, int32_t nu); // clover
 void top_charge_density(double *topo_charge_density, double *U, int64_t spos); // at one site
 void top_charge(double *topo_charge, double *U);
 void directional_sum(double *lattice, int64_t *directions, 
                      double *out_array, int64_t out_array_size);
-void staples(double *staple, double *U, int64_t spos, int64_t mu, int64_t nu); // staple
+void staples(double *staple, double *U, int64_t spos, int32_t mu, int32_t nu); // staple
 void link_trace(double *ltr, double *U);
 void gauge_action(double *action, double *U);
 void unit_config(double *U);
@@ -215,7 +215,7 @@ static inline void matmul_nc(double *restrict z, const double *restrict x, const
 
 static inline void adjoint(double *xc, double *x) {
     double y[X];
-    for (int64_t i = 0; i < X; i++) {
+    for (int32_t i = 0; i < X; i++) {
         y[i] = x[i];
     }
     xc[0] = y[0];       // m[0] + i m[1]         m[2] + i m[3]         m[4] + i m[5]

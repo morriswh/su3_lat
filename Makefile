@@ -5,10 +5,10 @@ BUILD_DIR := build
 
 CPPFLAGS  := -I$(SRC_DIR)
 DEPFLAGS  := -MMD -MP
-CFLAGS    := -Wall -Wextra -fopenmp -O3 -flto -march=native -ffp-contract=off
+CFLAGS    := -Wall -Wextra -Werror -Wformat-overflow -fopenmp -O3 -flto -march=native -ffp-contract=off
 LDFLAGS   := -L$(BUILD_DIR) -fopenmp -flto
 # Order matters for static libs: dependents first, dependencies last
-LDLIBS    := -lfileIO -lapelib -lapelib_opt -lsu3lib -lmatops -llapack -lm
+LDLIBS    := -lfileIO -lapelib -lsu3lib -lmatops -llapack -lm
 
 LIBS      := fileIO matops su3lib apelib
 LIBFILES  := $(LIBS:%=$(BUILD_DIR)/lib%.a)

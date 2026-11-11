@@ -13,7 +13,7 @@ void inverse(double *a, double *b) {
 
     memcpy(a,b,X*sizeof(double));
 
-    int64_t *IPIV = malloc(NC*sizeof(int));
+    lapack_int *IPIV = malloc(NC*sizeof(int));
 
     // lapack_int64_t info_rf, info_ri;
     //

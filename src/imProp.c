@@ -40,7 +40,7 @@ typedef struct {
     char config_number[10];
     char data_dir[200];
     char averaged_data_dir[200];
-    int32_t num_sources;
+    int64_t num_sources;
     int32_t shape[4];
     int32_t r_direction[4];
     char (*r_list)[16];
@@ -80,13 +80,13 @@ void trLinks(double *prop, const double *U, const loop_parameters *loop,
 
 //// top level functions
 int32_t do_run_for_config(input_parameters *input);
-void compute_observables(double *trace_array, double *prop_num, int32_t spos, const int32_t zspos, 
+void compute_observables(double *trace_array, double *prop_num, int64_t spos, const int32_t zspos, 
         const input_parameters *input, const double ratio, const int32_t t, const int32_t b, loop_parameters *loop );
 
 //// functions for handling gauge configuration
 double *read_configuration(char *config);
 void delete_configuration(double *V);
-double *random_gauge_transform(double *V);
+void random_gauge_transform(double *V);
 double *copy_configuration(double *V);
 double *get_unit_configuration();
 
@@ -103,7 +103,7 @@ void setup_loop_parameters(loop_parameters *loop, input_parameters *input);
 //// functions for handling and saving results of calculation
 // TODO: create a clear_measurement_list() function to avoid constant allocator calls
 measurement_list *create_measurement_list(size_t block_size);
-int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
+int add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement);
 void clear_measurement_list(measurement_list *list);
 void delete_measurement_list(measurement_list *list);
@@ -113,7 +113,7 @@ void write_data_to_file(measurement_list *list, char *data_path);
 measurement_list *read_data_from_file(char *data_path);
 
 //// functions for handling sources
-void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources);
+void source_grid(int64_t *pos, int32_t *zpos, int32_t mu_r, int64_t source, int64_t num_sources);
 void get_existing_sources(size_t *number_of_sources, uint32_t *existant_sources, char *data_path);
 int32_t in_source_list(uint32_t source, uint32_t *source_list, size_t size);
 
@@ -124,9 +124,9 @@ measurement_list *create_full_measurement_list(size_t block_size);
 void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str, input_parameters *input);
 int32_t do_source_block_average(input_parameters *input, int32_t block_size, char *blocked_data_dir);
 void write_blocked_data_to_file(input_parameters *input, double *blocked_data, 
-        int32_t size, char *r_str, char *t_str, char *b_str, char *blocked_data_dir);
+        int64_t size, char *r_str, char *t_str, char *b_str, char *blocked_data_dir);
 
-int main(int32_t argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "There should only be one argument here. That is the input file.\n");
         return 1;
@@ -222,9 +222,10 @@ int32_t do_run_for_config(input_parameters *input) {
             double prop_num[loop.width*X];
 
             #pragma omp for schedule(dynamic, 4)
-            for (int32_t s = 0; s < input->num_sources; s++) {
+            for (int64_t s = 0; s < input->num_sources; s++) {
                 // map source index to lattice index
-                int32_t lattice_s, lattice_zs;
+                int64_t lattice_s;
+                int32_t lattice_zs;
                 source_grid(&lattice_s, &lattice_zs, loop.mu_r, s, input->num_sources);
 
                 // check if source has already been measured
@@ -463,7 +464,7 @@ measurement_list *create_measurement_list(size_t size) {
     return list;
 } 
 
-int64_t add_measurement_to_list(measurement_list *list, int64_t index, 
+int add_measurement_to_list(measurement_list *list, int64_t index, 
                             double *measurement) {
     size_t num_measurements = list->number_of_measurements;
     if (num_measurements >= list->size) {
@@ -493,7 +494,7 @@ void delete_measurement_list(measurement_list *list) {
     free(list);
 }
 
-void source_grid(int32_t *pos, int32_t *zpos, int32_t mu_r, int32_t source, int32_t num_sources) {
+void source_grid(int64_t *pos, int32_t *zpos, int32_t mu_r, int64_t source, int64_t num_sources) {
     // TODO: rework this
     int32_t src[] = {0, 0, 0, 0};
 
@@ -527,13 +528,13 @@ void setup_loop_parameters(loop_parameters *loop, input_parameters *input) {
     loop->bperiod = (loop->mu_b == mu_t ? T : L)*loop->bstep;
 }
 
-void compute_observables(double *trace_array, double *prop_num, int32_t spos, const int32_t zspos, 
+void compute_observables(double *trace_array, double *prop_num, int64_t spos, const int32_t zspos, 
         const input_parameters *input, const double ratio, const int32_t t, const int32_t b, loop_parameters *loop ) {
 
     double *U = input->U;
 
     // int64_t srcp = X*spos;
-    int32_t zsrcp = X*zspos;
+    int64_t zsrcp = X*zspos;
     double source[] = {1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0};
 
     int64_t bstep = loop->bstep;
@@ -608,14 +609,13 @@ void delete_configuration(double *V) {
     free(V);
 }
 
-double *random_gauge_transform(double *V) {
+void random_gauge_transform(double *V) {
     // for gauge invariance check
-    
     double *Om;
     Om = (double*)malloc(OLENGTH*sizeof(double));
     rnd_gauge_tr(Om);
-    transform(V, V, Om);
-    return Om;
+    transform(V, Om);
+    free(Om);
 }
 
 double *copy_configuration(double *V) {
@@ -628,7 +628,7 @@ double *copy_configuration(double *V) {
 void create_info_file(input_parameters *input) {
     // TODO: change how we do this. It's basically useless right now
     // make an info file
-    char info_path[200];
+    char info_path[205];
     // sprintf(info_path, "%s/info_src%s", inputs[8], inputs[3]);
     sprintf(info_path, "%s/info", input->data_dir);
 
@@ -651,7 +651,7 @@ void create_info_file(input_parameters *input) {
     fprintf(info_file, "Configuration number: %s\n", input->config_number);
     fprintf(info_file, "Data write directory: %s\n", input->data_dir);
     fprintf(info_file, "Source averaged data write directory: %s\n", input->averaged_data_dir);
-    fprintf(info_file, "Number of sources: %d\n", input->num_sources);
+    fprintf(info_file, "Number of sources: %"PRId64"\n", input->num_sources);
     fprintf(info_file, "Auxiliary propagator t directions: %d, %d, %d, %d\n", 
             input->shape[0], input->shape[1], input->shape[2], input->shape[3]);
     fprintf(info_file, "Auxiliary propagator r directions: %d, %d, %d, %d\n", 
@@ -835,7 +835,7 @@ input_parameters *read_input_file_to_struct(char *file_name) {
     memcpy(input->config_number, PARAM_STRINGS[++index], sizeof(input->config_number));
     memcpy(input->data_dir, PARAM_STRINGS[++index], sizeof(input->data_dir));
     memcpy(input->averaged_data_dir, PARAM_STRINGS[++index], sizeof(input->averaged_data_dir));
-    input->num_sources = atoi(PARAM_STRINGS[++index]);
+    input->num_sources = atoll(PARAM_STRINGS[++index]);
     ssl2ia_fixed(PARAM_STRINGS[++index], input->shape, 4);
     ssl2ia_fixed(PARAM_STRINGS[++index], input->r_direction, 4);
     if(get_string_array(&input->t_list, &input->t_size, PARAM_STRINGS[++index]) < 0) {
@@ -1009,7 +1009,7 @@ void print_input_struct_info(input_parameters *input) {
     printf("Configuration number: %s\n", input->config_number);
     printf("Data write directory: %s\n", input->data_dir);
     printf("Source averaged data write directory: %s\n", input->averaged_data_dir);
-    printf("Number of sources: %d\n", input->num_sources);
+    printf("Number of sources: %"PRId64"\n", input->num_sources);
     printf("Auxiliary propagator t directions: %d, %d, %d, %d\n", 
             input->shape[0], input->shape[1], input->shape[2], input->shape[3]);
     printf("Auxiliary propagator r directions: %d, %d, %d, %d\n", 
@@ -1079,7 +1079,7 @@ int32_t do_source_average(input_parameters *input) {
 
         for (int64_t s = 0; s < input->num_sources; ++s) {
             // TODO: lattice_zs is not needed here, maybe rework this
-            int32_t lattice_s;
+            int64_t lattice_s;
             source_grid(&lattice_s, NULL, 0, s, input->num_sources);
             if (ordered_data->indices[lattice_s] == UINT32_MAX) {
                 fprintf(stderr, "Missing data for this configuration.\n");
@@ -1112,12 +1112,19 @@ int32_t do_source_block_average(input_parameters *input, int32_t block_size, cha
         return -1;
     }
 
-    int32_t block = ipow(block_size, 4);
+    int32_t block = ipow(block_size, D);
 
     if (L%block_size != 0 || T%block_size != 0) {
         fprintf(stderr, "Block should tile the lattice.\n");
         return -1;
     }
+
+    int64_t num_block_sources = LVOLUME/block; 
+    // double blocked_data[num_block_sources*NUM_DATAS];
+    // int32_t num_src_in_block[num_block_sources];
+
+    double *blocked_data = malloc(num_block_sources*NUM_DATAS*sizeof(double));
+    int32_t *num_src_in_block = malloc(num_block_sources*sizeof(int32_t));
 
     for (int32_t i = 0; i < input->r_size; i++) { // loop through ratio values
     for (int32_t j = 0; j < input->b_size; j++) { // loop through b_perp values
@@ -1129,9 +1136,6 @@ int32_t do_source_block_average(input_parameters *input, int32_t block_size, cha
         char data_path[250];
         create_data_path(data_path, input, r_str, t_str, b_str); 
 
-        int32_t num_block_sources = LVOLUME/block; 
-        double blocked_data[num_block_sources*NUM_DATAS];
-        int32_t num_src_in_block[num_block_sources];
         memset(blocked_data, 0, num_block_sources*NUM_DATAS*sizeof(double));
         memset(num_src_in_block, 0, num_block_sources*sizeof(int32_t));
 
@@ -1139,7 +1143,7 @@ int32_t do_source_block_average(input_parameters *input, int32_t block_size, cha
 
         for (int64_t s = 0; s < input->num_sources; ++s) {
             // TODO: lattice_zs is not needed here, maybe rework this
-            int32_t lattice_s;
+            int64_t lattice_s;
             source_grid(&lattice_s, NULL, 0, s, input->num_sources);
 
             if (ordered_data->indices[lattice_s] == UINT32_MAX) {
@@ -1149,14 +1153,14 @@ int32_t do_source_block_average(input_parameters *input, int32_t block_size, cha
             }
 
             int32_t blc[] = {0, 0, 0, 0};
-            int32_t block_L = L/block_size;
+            int64_t block_L = L/block_size;
 
             blc[0] = (lattice_s%L)/block_size;
             blc[1] = ((lattice_s/L)%L)/block_size;
             blc[2] = (((lattice_s/L)/L)%L)/block_size;
             blc[3] = ((((lattice_s/L)/L)/L)%T)/block_size;
 
-            int32_t block_index = ( ( blc[3]*block_L + blc[2])*block_L + blc[1])*block_L + blc[0];
+            int64_t block_index = ( ( blc[3]*block_L + blc[2])*block_L + blc[1])*block_L + blc[0];
             for (size_t n = 0; n < NUM_DATAS; n++) {
                 blocked_data[NUM_DATAS*block_index+n] += ordered_data->measurements[NUM_DATAS*lattice_s+n];
             }
@@ -1165,24 +1169,28 @@ int32_t do_source_block_average(input_parameters *input, int32_t block_size, cha
 
         delete_measurement_list(ordered_data);
 
-        for (int32_t nb = 0; nb < NUM_DATAS*num_block_sources; nb++) {
+        for (int64_t nb = 0; nb < num_block_sources; nb++) {
             if (num_src_in_block[nb] == 0) {
                 fprintf(stderr, "Sparse source grid, consider smaller block size, or use a larger number of sources.\n");
                 return -1;
             }
-            blocked_data[nb] /= (double)num_src_in_block[nb];
+            blocked_data[NUM_DATAS*nb] /= (double)num_src_in_block[nb];
+            blocked_data[NUM_DATAS*nb+1] /= (double)num_src_in_block[nb];
         }
 
         write_blocked_data_to_file(input, blocked_data, num_block_sources, r_str, t_str, b_str, blocked_data_dir);
-
     } // triple
     } // for
     } // loop
+    
+    free(blocked_data);
+    free(num_src_in_block);
+
     return 0;
 }
 
 void write_blocked_data_to_file(input_parameters *input, double *blocked_data, 
-        int32_t size, char *r_str, char *t_str, char *b_str, char *blocked_data_dir) {
+        int64_t size, char *r_str, char *t_str, char *b_str, char *blocked_data_dir) {
 
     char data_sub_dir[215];
     sprintf(data_sub_dir, "%s/r%sb%st%s", blocked_data_dir, r_str, b_str, t_str);
@@ -1192,7 +1200,7 @@ void write_blocked_data_to_file(input_parameters *input, double *blocked_data,
 
     FILE *data_file;
     data_file = fopen(data_path, "wb");
-    fwrite(blocked_data, sizeof(double), size, data_file);
+    fwrite(blocked_data, sizeof(double), NUM_DATAS*size, data_file);
     fclose(data_file);
 }
 
@@ -1245,7 +1253,7 @@ void write_data_to_tsv_file(double *data, char *r_str, char *b_str, char *t_str,
             input->averaged_data_dir, input->config_number);
 
     struct stat buffer;
-    int64_t result = stat(averaged_data_path, &buffer);
+    int result = stat(averaged_data_path, &buffer);
 
     FILE *tsv_file;
     tsv_file = fopen(averaged_data_path, "a");

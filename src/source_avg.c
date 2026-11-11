@@ -39,10 +39,10 @@ measurement_list *read_data_from_file_in_order(char **inputs);
 double *average_sources(measurement_list *list);
 void write_data_to_tsv_file(double *data, char **inputs);
 
-int64_t main(int64_t argc, char *argv[])
+int main(int argc, char *argv[])
 {
     if (argc < 9 || argc > 9) {
-        printf("argc = %ld \n", argc);
+        printf("argc = %d \n", argc);
         printf("Input should look like: \n");
         printf("%s n ratio num_sources b t config_number"
                " binary_file data_dir\n", argv[0]);
@@ -64,7 +64,7 @@ int64_t main(int64_t argc, char *argv[])
     for (int64_t s = 0; s<numSources; s++) {
         int64_t lattice_s;
         source_grid(&lattice_s, s, numSources);
-        if (ordered_data->indices[lattice_s] == -1) {
+        if (ordered_data->indices[lattice_s] == UINT32_MAX) {
             printf("missing data!\n");
             exit(1);
         }
@@ -105,7 +105,7 @@ measurement_list *create_full_measurement_list(size_t block_size) {
 
 void delete_measurement_list(measurement_list *list) {
     for (size_t i = 0; i < list->number_of_measurements; i++) {
-        if (list->indices[i] != -1) {
+        if (list->indices[i] != UINT32_MAX) {
             free(list->measurements[i]);
         }
     }
@@ -175,7 +175,7 @@ void write_data_to_tsv_file(double *data, char **inputs) {
 
 
     struct stat buffer;
-    int64_t result = stat(data_path, &buffer);
+    int result = stat(data_path, &buffer);
 
     FILE *tsv_file;
     tsv_file = fopen(data_path, "a");

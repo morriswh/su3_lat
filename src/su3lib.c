@@ -18,6 +18,27 @@
 
 enum dim{mu_x, mu_y, mu_z, mu_t};
 
+static inline int64_t shift(int64_t i, const int64_t c[4], int mu, int dir) {
+    // site index one step from i in direction mu (dir = +1 or -1), periodic
+    static const int64_t step[4] = {1, L, LSQUARE, LCUBE};
+    const int64_t ext = (mu == 3 ? T : L);
+    const int64_t n = c[mu] + dir;
+    const int64_t wrap = (n < 0) ? ext : (n >= ext ? -ext : 0);
+    return i + (dir + wrap)*step[mu];
+}
+
+static inline void site_coords(int64_t i, int64_t c[D]) {
+    // for (int j = 0; j < D; j++) {
+    //     c[j] = i / ipow(L,j);
+    //     if (j == D) break;
+    //     c[j] = c[j]%L;
+    // }
+    c[0] = i % L;
+    c[1] = (i / L) % L;
+    c[2] = (i / LSQUARE) % L;
+    c[3] = i / LCUBE;
+}
+
 void unit_config(double *U) {
     // make a unit gauge configuration
     for (int64_t i = 0; i < LLENGTH; ++i) {
@@ -122,12 +143,11 @@ void rnd_gauge_tr(double *Omega) {
     double dot_real, dot_imag;
     double norm_u2, norm_u;
     double norm_v2, norm_v;
-    int64_t i, j, p;
-    for (i = 0; i < LVOLUME; i++) {
-        for (j = 0; j < S_X; j++) {
+    for (int64_t i = 0; i < LVOLUME; i++) {
+        for (int64_t j = 0; j < S_X; j++) {
             temp[j] = 2*(double)rand()/(double)RAND_MAX - 1;
         }
-        p = X*i; // position in big array
+        int64_t p = X*i; // position in big array
         // get real and imaginary parts of dot product
         dot_real = temp[0]*temp[6] + temp[1]*temp[7]
                  + temp[2]*temp[8] + temp[3]*temp[9]
@@ -357,7 +377,7 @@ void all_plaquettes(double *U, double *a_plaq, double *s_plaq, double *t_plaq) {
     *a_plaq = 0.5*( *s_plaq + *t_plaq );
 }
 
-void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu) {
+void cloverleaf(double *clover, double *U, int64_t spos, int32_t mu, int32_t nu) {
     memset(clover, 0, X*sizeof(double));
 
     double temp[X], leaf[X];
@@ -418,7 +438,7 @@ void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu)
             adjoint(temp, temp);
             matmul(leaf, leaf, temp);
 
-            for (int64_t i = 0; i < X; i++) {
+            for (int32_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
@@ -442,7 +462,7 @@ void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu)
             get_link(temp, U, mod(pos, LLENGTH));
             matmul(leaf, leaf, temp);
 
-            for (int64_t i = 0; i < X; i++) {
+            for (int32_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
@@ -467,7 +487,7 @@ void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu)
             get_link(temp, U, mod(pos, LLENGTH));
             matmul(leaf, leaf, temp);
 
-            for (int64_t i = 0; i < X; i++) {
+            for (int32_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
@@ -491,12 +511,12 @@ void cloverleaf(double *clover, double *U, int64_t spos, int64_t mu, int64_t nu)
             adjoint(temp, temp);
             matmul(leaf, leaf, temp);
 
-            for (int64_t i = 0; i < X; i++) {
+            for (int32_t i = 0; i < X; i++) {
                 clover[i] += leaf[i];
             }
 
     adjoint(temp, clover);
-    for (int64_t i = 0; i < X; i++) {
+    for (int32_t i = 0; i < X; i++) {
         clover[i] -= temp[i];
         clover[i] *= 1.0/8.0;
     }
@@ -610,28 +630,7 @@ void directional_sum(double *lattice, int64_t *directions,
     }
 }
 
-static inline void site_coords(int64_t i, int64_t c[D]) {
-    for (int j = 0; j < D; j++) {
-        c[j] = i / ipow(L,j);
-        if (j == D) break;
-        c[j] = c[j]%L;
-    }
-    // c[0] = i % L;
-    // c[1] = (i / L) % L;
-    // c[2] = (i / LSQUARE) % L;
-    // c[3] = i / LCUBE;
-}
-
-static inline int64_t shift(int64_t i, const int64_t c[4], int mu, int dir) {
-    // site index one step from i in direction mu (dir = +1 or -1), periodic
-    static const int64_t step[4] = {1, L, LSQUARE, LCUBE};
-    const int64_t ext = (mu == 3 ? T : L);
-    const int64_t n = c[mu] + dir;
-    const int64_t wrap = (n < 0) ? ext : (n >= ext ? -ext : 0);
-    return i + (dir + wrap)*step[mu];
-}
-
-void staples(double *staple, double *U, int64_t pos, int64_t mu, int64_t nu) {
+void staples(double *staple, double *U, int64_t pos, int32_t mu, int32_t nu) {
     int64_t c[4]; site_coords(pos,c);
 
     double temp[X], staple_h[X];
@@ -670,48 +669,20 @@ void link_trace(double *ltr, double *U) {
     *ltr = res / ( LLENGTH * NC );
 }
 
-void transform(double *Up, double *U, double *Om) {
-    int64_t pos, opos, fopos;
-    int64_t offs, period, h;
-    double link[X];
-    double omegaL[X];
-    double omegaR[X];
-    for (int64_t i = 0; i < LLENGTH; i++) {
-        pos = X*i;
-        opos = X*(i/D);
-        // offs = X*ipow(L,i%D); 
-        h = i%D;
-        
-        if (h == 0) {
-            offs = X;
-            period = X*L;
-        }
-        else if (h == 1) {
-            offs = X*L;
-            period = X*LSQUARE;
-        }
-        else if (h == 2) {
-            offs = X*LSQUARE;
-            period = X*LCUBE;
-        }
-        else {
-            offs = X*LCUBE;
-            period = X*LVOLUME;
-        }
+void transform(double *U, double *Om) {
+    // no copy, overwrites existing configuration
+    double temp[X];
+    for (int64_t p = 0; p < LVOLUME; p++) {
+        double *omegaL = &Om[X*p]; // this is not dependent on mu
+        for (int32_t mu = 0; mu < D; mu++) {
+            int64_t step = ipow(L,(int64_t)mu);
+            int64_t period = step*(mu == 3 ? T : L);
+            int64_t fp = p - mod(p, period) + mod(p + step, period);
 
-        fopos = opos - mod(opos, period) + mod(opos + offs, period);
-        for (int64_t j = 0; j < X; j++) {
-            link[j] = U[pos+j];
-            omegaL[j] = Om[opos+j];
-            omegaR[j] = Om[mod(fopos+j, OLENGTH)];
-        }
-        adjoint(omegaR,omegaR);
-
-        matmul(link,omegaL,link);
-        matmul(link,link,omegaR);
-
-        for (int64_t k = 0; k < X; k++) {
-            Up[pos+k] = link[k];
+            double *link = &U[X*(D*p+mu)];
+            double *omegaR = &Om[X*fp];
+            matmul_nc(temp,omegaL,link);
+            matmul_na_nc(link,temp,omegaR);
         }
     }
 }
@@ -721,7 +692,6 @@ void gauge_action(double *action, double *U) {
     double sum = 0.0;
     double tr[2];
     int64_t i = 0, j = 0, k = 0;
-    // I don't understand 'reduction' yet, but apparently it is needed
     #pragma omp parallel for reduction(+:sum) private(tr, plaq, i, j, k)
     for (i = 0; i < LVOLUME; i++) {
         double help = 0.0;
@@ -734,5 +704,5 @@ void gauge_action(double *action, double *U) {
         }
         sum += help;
     }
-    *action = 2*beta*(3*T*L - sum);
+    *action = 2*beta*(NC*(D*(D-1)/2)*LVOLUME - sum);
 }
